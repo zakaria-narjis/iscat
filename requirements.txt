@@ -2,7 +2,8 @@ numpy==1.26.0
 nd2==0.10.1
 pandas==2.2.1
 matplotlib==3.9.3
-
+torch==2.5.1
+torchvision==0.16.2
 #comdet
 pyimagej==1.5.0 
 scyjava==1.10.0

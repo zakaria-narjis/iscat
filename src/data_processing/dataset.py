@@ -2,7 +2,6 @@ from torchvision.transforms.v2 import Resize, RandomCrop
 from torchvision.transforms.v2 import functional as TF
 from random import random
 from torch.utils.data import Dataset
-from PIL import Image
 import nd2
 from data_processing.labeler import Labeler
 import numpy as np
