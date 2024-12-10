@@ -1,6 +1,6 @@
 from torchvision.transforms.v2 import Resize, RandomCrop
 from torchvision.transforms.v2 import functional as TF
-from random import random
+import random
 from torch.utils.data import Dataset
 import nd2
 from src.data_processing.labeler import Labeler
@@ -17,18 +17,16 @@ class iScatDataset(Dataset):
         self.image_size = image_size
         self.preload_image = preload_image
         self.seg_args = seg_args
+        self.duplication_factor = 100 #number of times to repeat the image
         if self.preload_image:
             self.images = []
             for image_path in tqdm(self.image_paths,desc="Loading surface images to Memory"):
-                self.images.append(nd2.imread(image_path)[0])           
+                self.images.append(nd2.imread(image_path)[[1,100,199],:,:])           
             self.images = np.concatenate([self.images],axis=0)
-            self.images = np.repeat(self.images,100,axis=0)
             self.images = torch.from_numpy(self.images)
-        else:
-            self.image_paths = self.image_paths
-            self.target_paths = self.target_paths
-            self.image_paths = np.concatenate([self.image_paths])
-            self.image_paths = np.repeat(self.image_paths,100,axis=0)
+            self.images = self.normalize_image(self.images)
+        self.image_paths = np.concatenate([self.image_paths])
+        self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
 
         if reload_mask or not all([os.path.exists(os.path.join(os.path.dirname(target_path[0]),"mask.npy"))for target_path in self.target_paths]):
             self.labeler = Labeler()
@@ -54,9 +52,22 @@ class iScatDataset(Dataset):
                 np.save(os.path.join(os.path.dirname(fluorescence_images_paths[0]),"mask.npy"),mask)
             self.masks.append(mask)
         self.masks = np.concatenate([self.masks],axis=0)
-        self.masks = np.repeat(self.masks,100,axis=0)
         self.masks = torch.from_numpy(self.masks).float()
-
+    def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]):
+        """
+        Normalize an image: cast to float32 and normalize using mean and std.
+        Args:
+            image (torch.Tensor): Input image in uint16 format.
+            mean (list): Mean values for normalization.
+            std (list): Standard deviation values for normalization.
+        Returns:
+            torch.Tensor: Normalized image in float32 format.
+        """
+        image = image.to(dtype=torch.float32) / 65535.0
+        mean = torch.tensor(mean, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
+        std = torch.tensor(std, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
+        return (image - mean) / std
+    
     def augment(self, image, mask):
         if random.random() > 0.5:
             image = TF.hflip(image)
@@ -76,16 +87,15 @@ class iScatDataset(Dataset):
         mask = TF.crop(mask, i, j, h, w)
         image,mask = self.augment(image,mask)
         # Transform to tensor
-        image = TF.to_tensor(image)
-        mask = TF.to_tensor(mask)
         return image, mask
 
     def __getitem__(self, index):
+        index_in_images = index//self.duplication_factor
         if self.preload_image:
-            image = self.images[index]
+            image = self.images[index_in_images]
         else:
             image = nd2.imread(self.image_paths[index])
-        mask = self.masks[index]
+        mask = self.masks[index_in_images]
         x, y = self.transform(image, mask)
         return x, y
 
