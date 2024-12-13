@@ -71,7 +71,8 @@ class iScatDataset(Dataset):
         # mean = torch.tensor(mean, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
         # std = torch.tensor(std, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
         # out = (image - mean) / std
-        image = image / (2**16-1)
+        # image = image / (2**16-1)
+        image = (image-237)/(15321-237)
         out = Normalize(mean,std)(image)
         return out
 
