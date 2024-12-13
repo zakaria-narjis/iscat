@@ -1,4 +1,4 @@
-from torchvision.transforms.v2 import Resize, RandomCrop
+from torchvision.transforms.v2 import Resize, RandomCrop, Normalize
 from torchvision.transforms.v2 import functional as TF
 import random
 from torch.utils.data import Dataset
@@ -10,13 +10,14 @@ from tqdm import tqdm
 import os
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
         self.image_size = image_size
         self.preload_image = preload_image
         self.seg_args = seg_args
+        self.apply_augmentation = apply_augmentation
         self.duplication_factor = 100 #number of times to repeat the image
         if self.preload_image:
             self.images = []
@@ -53,21 +54,27 @@ class iScatDataset(Dataset):
             self.masks.append(mask)
         self.masks = np.concatenate([self.masks],axis=0)
         self.masks = torch.from_numpy(self.masks).float()
+
     def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]):
         """
         Normalize an image: cast to float32 and normalize using mean and std.
         Args:
-            image (torch.Tensor): Input image in uint16 format.
+            image (torch.Tensor): Input image.
             mean (list): Mean values for normalization.
             std (list): Standard deviation values for normalization.
         Returns:
             torch.Tensor: Normalized image in float32 format.
         """
-        image = image.to(dtype=torch.float32) / 65535.0
-        mean = torch.tensor(mean, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
-        std = torch.tensor(std, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
-        return (image - mean) / std
-    
+        image = image.to(dtype=torch.float32)
+        
+        # image = image / image.amax(dim=(2,3), keepdim=True)
+        # mean = torch.tensor(mean, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
+        # std = torch.tensor(std, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
+        # out = (image - mean) / std
+        image = image / (2**16-1)
+        out = Normalize(mean,std)(image)
+        return out
+
     def augment(self, image, mask):
         if random.random() > 0.5:
             image = TF.hflip(image)
@@ -85,7 +92,8 @@ class iScatDataset(Dataset):
             image, output_size=self.image_size)
         image = TF.crop(image, i, j, h, w)
         mask = TF.crop(mask, i, j, h, w)
-        image,mask = self.augment(image,mask)
+        if self.apply_augmentation:
+            image,mask = self.augment(image,mask)
         # Transform to tensor
         return image, mask
 
