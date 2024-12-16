@@ -10,7 +10,7 @@ from tqdm import tqdm
 import os
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
@@ -18,7 +18,7 @@ class iScatDataset(Dataset):
         self.preload_image = preload_image
         self.seg_args = seg_args
         self.apply_augmentation = apply_augmentation
-        self.duplication_factor = 100 #number of times to repeat the image
+        self.duplication_factor = duplication_factor #number of times to repeat the image
         if self.preload_image:
             self.images = []
             for image_path in tqdm(self.image_paths,desc="Loading surface images to Memory"):
@@ -54,6 +54,25 @@ class iScatDataset(Dataset):
             self.masks.append(mask)
         self.masks = np.concatenate([self.masks],axis=0)
         self.masks = torch.from_numpy(self.masks).float()
+        self.masks = self.process_mask(self.masks)
+    def process_mask(self, mask):
+        """
+        Convert a single-channel mask with class indices into a one-hot encoded mask with multiple channels.
+        
+        Args:
+            mask (torch.Tensor): Single-channel mask of shape (H, W) with values corresponding to class indices.
+            
+        Returns:
+            torch.Tensor: One-hot encoded mask of shape (num_classes, H, W).
+        """
+        num_classes = 3  # Adjust if you have more classes
+        # Ensure the mask is of type long (necessary for one-hot encoding)
+        mask = mask.long()
+        # Create one-hot encoded mask
+        one_hot_mask = torch.nn.functional.one_hot(mask, num_classes=num_classes)
+        # Rearrange dimensions to (num_classes, H, W)
+        one_hot_mask = one_hot_mask.permute(0, 3, 1, 2)
+        return one_hot_mask
 
     def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]):
         """
