@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 
 data/iScat
+runs
+best_multiclass_unet_model.pth
