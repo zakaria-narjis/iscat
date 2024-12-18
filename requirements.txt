@@ -3,7 +3,7 @@ nd2==0.10.1
 pandas==2.2.1
 matplotlib==3.9.3
 torch==2.5.1
-torchvision==0.16.2
+torchvision==0.20.1
 tqdm==4.67.1
 monai==1.4.0
 #comdet
