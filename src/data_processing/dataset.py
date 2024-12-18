@@ -45,6 +45,7 @@ class iScatDataset(Dataset):
 
             self.images = np.concatenate([self.images],axis=0)
             self.images = torch.from_numpy(self.images)
+            self.images=self.images.to(dtype=torch.float32)
             if self.normalize:
                 self.images = self.normalize_image(self.images)
         self.image_paths = np.concatenate([self.image_paths])
