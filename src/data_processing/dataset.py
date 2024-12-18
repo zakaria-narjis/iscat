@@ -10,7 +10,7 @@ from tqdm import tqdm
 import os
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
@@ -19,13 +19,15 @@ class iScatDataset(Dataset):
         self.seg_args = seg_args
         self.apply_augmentation = apply_augmentation
         self.duplication_factor = duplication_factor #number of times to repeat the image
+        self.normalize = normalize
         if self.preload_image:
             self.images = []
             for image_path in tqdm(self.image_paths,desc="Loading surface images to Memory"):
                 self.images.append(nd2.imread(image_path)[[1,100,199],:,:])           
             self.images = np.concatenate([self.images],axis=0)
             self.images = torch.from_numpy(self.images)
-            self.images = self.normalize_image(self.images)
+            if self.normalize:
+                self.images = self.normalize_image(self.images)
         self.image_paths = np.concatenate([self.image_paths])
         self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
 
