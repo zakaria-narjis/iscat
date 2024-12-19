@@ -11,7 +11,7 @@ import os
 from tifffile import imread
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,use_nd2_file=True):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,use_nd2_file=True,device="cpu"):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
@@ -21,6 +21,7 @@ class iScatDataset(Dataset):
         self.apply_augmentation = apply_augmentation
         self.duplication_factor = duplication_factor #number of times to repeat the image
         self.normalize = normalize
+        self.device = device
         if self.preload_image:
             self.images = []
             if use_nd2_file:
@@ -76,8 +77,12 @@ class iScatDataset(Dataset):
             self.masks.append(mask)
         self.masks = np.concatenate([self.masks],axis=0)
         self.masks = torch.from_numpy(self.masks).float()
-        self.masks = self.process_mask(self.masks)
-    def process_mask(self, mask):
+        self.masks = self.one_hot_mask(self.masks)
+        self.masks = self.masks.to(dtype=torch.float32)
+
+        self.masks = self.masks.to(self.device)
+        self.images = self.images.to(self.device)
+    def one_hot_mask(self, mask):
         """
         Convert a single-channel mask with class indices into a one-hot encoded mask with multiple channels.
         
