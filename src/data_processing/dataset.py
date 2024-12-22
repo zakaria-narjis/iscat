@@ -11,7 +11,7 @@ import os
 from tifffile import imread
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,use_nd2_file=True,device="cpu"):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,device="cpu"):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
@@ -24,26 +24,11 @@ class iScatDataset(Dataset):
         self.device = device
         if self.preload_image:
             self.images = []
-            if use_nd2_file:
-                for image_path in tqdm(self.image_paths,desc="Loading surface images to Memory"):
-                    self.images.append(nd2.imread(image_path)[[1,100,199],:,:])
-            else:
-                for image_path in tqdm(self.image_paths, desc="Loading TIFF images to Memory"):
-                    base_path = os.path.dirname(image_path)
-                    base_name = os.path.splitext(os.path.basename(image_path))[0]
-
-                    # Paths to the specific TIFF frames
-                    frame_paths = [
-                        os.path.join(base_path, f"{base_name}_frame_000.tiff"),
-                        os.path.join(base_path, f"{base_name}_frame_100.tiff"),
-                        os.path.join(base_path, f"{base_name}_frame_200.tiff"),
-                    ]
-
-                    # Read each frame and stack them into a single array
-                    frames = [imread(frame_path) for frame_path in frame_paths]
-                    stacked_frames = np.stack(frames, axis=0)  # Shape: (3, H, W)
-                    self.images.append(stacked_frames)
-
+            for z_images in tqdm(self.image_paths, desc="Loading TIFF images to Memory"):
+                # Read each frame and stack them into a single array
+                frames = [imread(frame_path) for frame_path in z_images]
+                stacked_frames = np.stack(frames, axis=0)  # Shape: (3, H, W)
+                self.images.append(stacked_frames)
             self.images = np.concatenate([self.images],axis=0)
             self.images = torch.from_numpy(self.images)
             self.images=self.images.to(dtype=torch.float32)
@@ -82,6 +67,7 @@ class iScatDataset(Dataset):
 
         self.masks = self.masks.to(self.device)
         self.images = self.images.to(self.device)
+
     def one_hot_mask(self, mask):
         """
         Convert a single-channel mask with class indices into a one-hot encoded mask with multiple channels.
@@ -111,8 +97,7 @@ class iScatDataset(Dataset):
         Returns:
             torch.Tensor: Normalized image in float32 format.
         """
-        image = image.to(dtype=torch.float32)
-        
+        image = image.to(dtype=torch.float32)       
         # image = image / image.amax(dim=(2,3), keepdim=True)
         # mean = torch.tensor(mean, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
         # std = torch.tensor(std, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
