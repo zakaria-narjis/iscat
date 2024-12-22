@@ -12,7 +12,7 @@ class Labeler:
         print(f"ImageJ2 version: {self.ij.getVersion()}")
         pass
 
-    def create_labels_mask(self, canvas_shape, particles_positions_df):
+    def create_labels_mask(self, canvas_shape, particles_positions):
         """
             canvas_shape: tuple of image shape (height, width)
             particles_positions: list of pandas dataframe of bounding box of particles in each image
@@ -24,35 +24,36 @@ class Labeler:
         # Precompute y, x coordinates
         y, x = np.ogrid[:canvas_shape[0], :canvas_shape[1]]
 
-        for _, row in particles_positions_df.iterrows():
-            # Compute ellipse parameters
-            center_x = int((row['xMin'] + row['xMax']) / 2)
-            center_y = int((row['yMin'] + row['yMax']) / 2)
-            axes_x = int((row['xMax'] - row['xMin']) / 2)
-            axes_y = int((row['yMax'] - row['yMin']) / 2)
+        for particle_data in particles_positions:
+            for _, row in particle_data.iterrows():
+                # Compute ellipse parameters
+                center_x = int((row['xMin'] + row['xMax']) / 2)
+                center_y = int((row['yMin'] + row['yMax']) / 2)
+                axes_x = int((row['xMax'] - row['xMin']) / 2)
+                axes_y = int((row['yMax'] - row['yMin']) / 2)
 
-            # Vectorized ellipse mask creation
-            ellipse_mask = ((x - center_x) / axes_x)**2 + ((y - center_y) / axes_y)**2 <= 1
+                # Vectorized ellipse mask creation
+                mask = ((x - center_x) / axes_x)**2 + ((y - center_y) / axes_y)**2 <= 1
 
-            # Efficient overlap and labeling
-            label_canvas[ellipse_mask] = 1
+                # Efficient overlap and labeling
+                label_canvas[mask & (label_canvas == 1)] = 2
+                label_canvas[mask & (label_canvas == 0)] = 1
 
         return label_canvas 
 
-    def generate_labels(self,fluo_images_paths,seg_args,segmentation_method="comdet"):
+    def label(self,fluo_images_paths,seg_args,segmentation_method="comdet"):
         """
         fluo_images_paths: list of fluorecense images paths
         seg_args: list of segmentation arguments
         segmentation_method: method to segment the particles
-
+        return: numpy array of labels (mask)
         """
         if segmentation_method == "comdet":
             particles_positions = []
-            canvas_shape = np.array(Image.open(fluo_images_paths[0])).shape
-            for fluo_image_path,args in zip(fluo_images_paths,seg_args):
-                particles_position_path = fluo_image_path.replace(".tif",".csv")
+            for image_path,args in zip(fluo_images_paths,seg_args):
+                particles_position_path = image_path.replace(".tif",".csv")
                 if not os.path.exists(particles_position_path):  
-                    image = self.ij.IJ.openImage(fluo_image_path)            
+                    image = self.ij.IJ.openImage(image_path)            
                     self.ij.py.run_plugin(plugin="Detect Particles",args=args,imp=image)
                     table = self.ij.ResultsTable.getResultsTable()
                     Table = sj.jimport('org.scijava.table.Table')
@@ -61,11 +62,10 @@ class Labeler:
                     results.to_csv(particles_position_path)
                     particles_positions.append(results)
                 else:
-                    particles_positions_df = pd.read_csv(particles_position_path)
-                    mask = self.create_labels_mask(canvas_shape, particles_positions_df)
-                    mask_name = os.path.basename(fluo_image_path).replace(".tif","_mask.npy")
-                    np.save(os.path.join(mask_name,mask))
+                    particles_positions.append(pd.read_csv(particles_position_path))
+            canvas_shape = np.array(Image.open(fluo_images_paths[0])).shape
+            mask = self.create_labels_mask(canvas_shape, particles_positions)
         else:
             raise ValueError("Invalid segmentation method")
-
+        return mask
 
