@@ -58,7 +58,7 @@ class iScatDataset(Dataset):
         Returns:
             torch.Tensor: One-hot encoded mask of shape (num_classes, H, W).
         """
-        num_classes = 3  # Adjust if you have more classes
+        num_classes = 2  # Adjust if you have more classes
         # Ensure the mask is of type long (necessary for one-hot encoding)
         mask = mask.long()
         # Create one-hot encoded mask
