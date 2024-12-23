@@ -42,30 +42,11 @@ class iScatDataset(Dataset):
 
         self.masks =  Utils.load_np_masks(target_paths,self.fluo_masks_indices,seg_method=self.seg_method)
         self.masks = torch.from_numpy(self.masks).float()
-        self.masks = self.one_hot_mask(self.masks)
         self.masks = self.masks.to(dtype=torch.float32)
 
         self.masks = self.masks.to(self.device)
         self.images = self.images.to(self.device)
 
-    def one_hot_mask(self, mask):
-        """
-        Convert a single-channel mask with class indices into a one-hot encoded mask with multiple channels.
-        
-        Args:
-            mask (torch.Tensor): Single-channel mask of shape (H, W) with values corresponding to class indices.
-            
-        Returns:
-            torch.Tensor: One-hot encoded mask of shape (num_classes, H, W).
-        """
-        num_classes = 2  # Adjust if you have more classes
-        # Ensure the mask is of type long (necessary for one-hot encoding)
-        mask = mask.long()
-        # Create one-hot encoded mask
-        one_hot_mask = torch.nn.functional.one_hot(mask, num_classes=num_classes)
-        # Rearrange dimensions to (num_classes, H, W)
-        one_hot_mask = one_hot_mask.permute(0, 3, 1, 2)
-        return one_hot_mask
 
     def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]):
         """
