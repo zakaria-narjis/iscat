@@ -12,13 +12,14 @@ from tifffile import imread
 from src.data_processing.utils import Utils
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,fluo_masks_indices=[0,1,2],device="cpu"):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,seg_method="comdet",fluo_masks_indices=[0,1,2],device="cpu"):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
         self.image_size = image_size
         self.preload_image = preload_image
         self.seg_args = seg_args
+        self.seg_method = seg_method
         self.fluo_masks_indices = fluo_masks_indices #list of indices of the fluorescence images to use
         self.apply_augmentation = apply_augmentation
         self.duplication_factor = duplication_factor #number of times to repeat the image
@@ -39,7 +40,7 @@ class iScatDataset(Dataset):
         self.image_paths = np.concatenate([self.image_paths])
         self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
 
-        self.masks =  Utils.load_np_masks(target_paths,self.fluo_masks_indices)
+        self.masks =  Utils.load_np_masks(target_paths,self.fluo_masks_indices,seg_method=self.seg_method)
         self.masks = torch.from_numpy(self.masks).float()
         self.masks = self.one_hot_mask(self.masks)
         self.masks = self.masks.to(dtype=torch.float32)

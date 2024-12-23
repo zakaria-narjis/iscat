@@ -122,13 +122,19 @@ class Utils:
                 print(f"Saved: {output_path}")
 
     @staticmethod
-    def load_np_masks(target_paths,fluo_masks_indices):
+    def load_np_masks(target_paths,fluo_masks_indices,seg_method="comdet"):
         all_masks = []
         all_masks_paths = []
+        if seg_method == "comdet":
+            mask_suffix = "_mask.npy"
+        elif seg_method == "kmeans":
+            mask_suffix = "_mask_kmeans.npy"
+        else:
+            raise ValueError("Invalid segmentation method")
         for target_path in target_paths:
             masks_path = []
             for fluo_mask_idx in fluo_masks_indices:
-                mask_path =target_path[fluo_mask_idx].replace(".tif","_mask.npy")
+                mask_path =target_path[fluo_mask_idx].replace(".tif", mask_suffix)
                 if os.path.exists(mask_path):
                     masks_path.append(mask_path)
                 else:
@@ -147,17 +153,24 @@ class Utils:
     
     @staticmethod
     def generate_np_masks(all_fluo_images_paths,seg_args=None,seg_method="comdet"):
-        if seg_args is None:
-            args={
-            "ch1i":True,
-            "ch1a":4,
-            "ch1s":10
-            }
-        seg_args = [[args,args,args]]* len(all_fluo_images_paths)
-        labeler = Labeler()
-        for fluorescence_images_path,seg_arg in tqdm(zip(all_fluo_images_paths,seg_args),total=len(all_fluo_images_paths),desc="Creating Masks"):
-            labeler.generate_labels(fluorescence_images_path, seg_arg, segmentation_method=seg_method)
-
+        if seg_method == "comdet":
+            labeler = Labeler(method="comdet")
+            if seg_args is None:
+                args={
+                "ch1i":True,
+                "ch1a":4,
+                "ch1s":10
+                }
+            seg_args = [[args,args,args]]* len(all_fluo_images_paths)    
+            for fluorescence_images_path,seg_arg in tqdm(zip(all_fluo_images_paths,seg_args),total=len(all_fluo_images_paths),desc="Creating Masks with ComDet"):
+                labeler.generate_labels(fluorescence_images_path, seg_arg, segmentation_method=seg_method)
+        elif seg_method == "kmeans":
+                labeler = Labeler(method="kmeans")
+                for fluorescence_images_path in tqdm(all_fluo_images_paths,total=len(all_fluo_images_paths),desc="Creating Masks with KMeans"):
+                    labeler.generate_labels(fluorescence_images_path, segmentation_method=seg_method)
+        else:
+            raise ValueError("Invalid segmentation method")
+        
     @staticmethod
     def visualize_labeled_canvas(mask): 
         # Plot the labeled canvas

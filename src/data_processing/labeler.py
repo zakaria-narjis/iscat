@@ -4,14 +4,14 @@ import os
 import pandas as pd
 import imagej
 import scyjava as sj
-
+import cv2
 
 class Labeler:
 
-    def __init__(self,):
-        self.ij = imagej.init(ij_dir_or_version_or_endpoint='D:\Fiji.app',mode=imagej.Mode.HEADLESS)
-        print(f"ImageJ2 version: {self.ij.getVersion()}")
-        pass
+    def __init__(self,method="comdet"):
+        if method == "comdet":
+            self.ij = imagej.init(ij_dir_or_version_or_endpoint='D:\Fiji.app',mode=imagej.Mode.HEADLESS)
+            print(f"ImageJ2 version: {self.ij.getVersion()}")
 
     def create_labels_mask(self, canvas_shape, particles_positions_df):
         """
@@ -40,7 +40,7 @@ class Labeler:
 
         return label_canvas 
 
-    def generate_labels(self,fluo_images_paths,seg_args,segmentation_method="comdet"):
+    def generate_labels(self,fluo_images_paths,seg_args=None,segmentation_method="comdet"):
         """
         fluo_images_paths: list of fluorecense images paths
         seg_args: list of segmentation arguments
@@ -68,6 +68,48 @@ class Labeler:
                     
                     mask_path = fluo_image_path.replace(".tif","_mask.npy")
                     np.save(mask_path,mask)
+        elif segmentation_method == "kmeans":
+            for fluo_image_path in fluo_images_paths:
+                mask_path = fluo_image_path.replace(".tif", "_mask_kmeans.npy")
+                # Load the fluorescence image
+                image = cv2.imread(fluo_image_path, cv2.IMREAD_UNCHANGED)
+                if image is None:
+                    raise FileNotFoundError(f"Image not found at {fluo_image_path}")
+
+                # Normalize 16-bit image to 8-bit for KMeans processing
+                image_normalized = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+
+                # Perform KMeans segmentation
+                def kmeans_color_quantization(image, clusters=2, rounds=1):
+                    h, w = image.shape[:2]
+                    samples = np.zeros([h * w, 1], dtype=np.float32)
+                    count = 0
+
+                    for x in range(h):
+                        for y in range(w):
+                            samples[count] = image[x, y]
+                            count += 1
+
+                    compactness, labels, centers = cv2.kmeans(
+                        samples,
+                        clusters,
+                        None,
+                        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10000, 0.0001),
+                        rounds,
+                        cv2.KMEANS_RANDOM_CENTERS
+                    )
+
+                    centers = np.uint16(centers)
+                    res = centers[labels.flatten()]
+                    return res.reshape((image.shape))
+
+                kmeans_result = kmeans_color_quantization(image_normalized, clusters=2)
+
+                # Apply Otsu's thresholding to get binary mask
+                kmeans_normalized = cv2.normalize(kmeans_result, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                thresh = cv2.threshold(kmeans_normalized, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+                # Save mask as numpy file
+                np.save(mask_path, thresh)
         else:
             raise ValueError("Invalid segmentation method")
 
