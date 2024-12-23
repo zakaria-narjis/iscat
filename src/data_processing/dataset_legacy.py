@@ -3,23 +3,21 @@ from torchvision.transforms.v2 import functional as TF
 import random
 from torch.utils.data import Dataset
 import nd2
-
+from src.data_processing.labeler import Labeler
 import numpy as np
 import torch
 from tqdm import tqdm
 import os
 from tifffile import imread
-from src.data_processing.utils import Utils
 
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,fluo_masks_indices=[0,1,2],device="cpu"):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,device="cpu"):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
         self.image_size = image_size
         self.preload_image = preload_image
         self.seg_args = seg_args
-        self.fluo_masks_indices = fluo_masks_indices #list of indices of the fluorescence images to use
         self.apply_augmentation = apply_augmentation
         self.duplication_factor = duplication_factor #number of times to repeat the image
         self.normalize = normalize
@@ -39,7 +37,30 @@ class iScatDataset(Dataset):
         self.image_paths = np.concatenate([self.image_paths])
         self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
 
-        self.masks =  Utils.load_np_masks(target_paths,self.fluo_masks_indices)
+        if reload_mask or not all([os.path.exists(os.path.join(os.path.dirname(target_path[0]),"mask.npy"))for target_path in self.target_paths]):
+            self.labeler = Labeler()
+        #default segmentation arguments
+        if self.seg_args is None:
+            args={
+            "ch1i":True,
+            "ch1a":4,
+            "ch1s":10
+            }
+            self.seg_args = [[args,args,args]]*len(self.target_paths)
+        self.masks= []
+
+        for fluorescence_images_paths, seg_args in tqdm(
+            zip(self.target_paths, self.seg_args),
+            total=len(self.target_paths), 
+            desc="Creating Masks"      
+        ):
+            if reload_mask==False and os.path.exists(os.path.join(os.path.dirname(fluorescence_images_paths[0]),"mask.npy")):
+                mask = np.load(os.path.join(os.path.dirname(fluorescence_images_paths[0]),"mask.npy"))
+            else:                   
+                mask = self.labeler.label(fluorescence_images_paths, seg_args, segmentation_method="comdet")
+                np.save(os.path.join(os.path.dirname(fluorescence_images_paths[0]),"mask.npy"),mask)
+            self.masks.append(mask)
+        self.masks = np.concatenate([self.masks],axis=0)
         self.masks = torch.from_numpy(self.masks).float()
         self.masks = self.one_hot_mask(self.masks)
         self.masks = self.masks.to(dtype=torch.float32)

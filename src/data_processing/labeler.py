@@ -5,6 +5,7 @@ import pandas as pd
 import imagej
 import scyjava as sj
 
+
 class Labeler:
 
     def __init__(self,):
@@ -49,7 +50,8 @@ class Labeler:
         if segmentation_method == "comdet":
             particles_positions = []
             canvas_shape = np.array(Image.open(fluo_images_paths[0])).shape
-            for fluo_image_path,args in zip(fluo_images_paths,seg_args):
+            
+            for fluo_image_path, args in zip(fluo_images_paths, seg_args):
                 particles_position_path = fluo_image_path.replace(".tif",".csv")
                 if not os.path.exists(particles_position_path):  
                     image = self.ij.IJ.openImage(fluo_image_path)            
@@ -63,8 +65,9 @@ class Labeler:
                 else:
                     particles_positions_df = pd.read_csv(particles_position_path)
                     mask = self.create_labels_mask(canvas_shape, particles_positions_df)
-                    mask_name = os.path.basename(fluo_image_path).replace(".tif","_mask.npy")
-                    np.save(os.path.join(mask_name,mask))
+                    
+                    mask_path = fluo_image_path.replace(".tif","_mask.npy")
+                    np.save(mask_path,mask)
         else:
             raise ValueError("Invalid segmentation method")
 
