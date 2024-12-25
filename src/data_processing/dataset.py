@@ -48,7 +48,7 @@ class iScatDataset(Dataset):
         self.images = self.images.to(self.device)
 
 
-    def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]):
+    def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225], eps: float = 1e-8):
         """
         Normalize an image: cast to float32 and normalize using mean and std.
         Args:
@@ -58,15 +58,14 @@ class iScatDataset(Dataset):
         Returns:
             torch.Tensor: Normalized image in float32 format.
         """
-        image = image.to(dtype=torch.float32)       
-        # image = image / image.amax(dim=(2,3), keepdim=True)
-        # mean = torch.tensor(mean, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
-        # std = torch.tensor(std, dtype=torch.float32, device=image.device).view(1, -1, 1, 1)
-        # out = (image - mean) / std
-        # image = image / (2**16-1)
-        image = (image-237)/(15321-237)
-        out = Normalize(mean,std)(image)
-        return out
+        normalized_images = image/65535.0
+        # Compute mean and std for each image in the batch
+        mean = normalized_images .mean(dim=( 2, 3), keepdim=True)  # Shape: (N, 1, 1, 1)
+        std = normalized_images .std(dim=( 2, 3), keepdim=True)    # Shape: (N, 1, 1, 1)
+        
+        # Perform z-score normalization
+        normalized_images = (normalized_images - mean) / (std + eps)
+        return normalized_images
 
     def augment(self, image, mask):
         if random.random() > 0.5:
