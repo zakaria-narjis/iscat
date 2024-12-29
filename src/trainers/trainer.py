@@ -75,10 +75,10 @@ class Trainer:
                 return nn.CrossEntropyLoss(weight=self.class_weights)
             elif self.loss_type == "dice":
                 self.logger.info("Using Dice Loss ")
-                return DiceLoss(softmax=True, squared_pred=False, batch=True, reduction="mean")
+                return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean")
             else:
                 self.logger.info("Using Dice CrossEntropy Loss ")
-                return DiceCELoss(softmax=True, squared_pred=False, batch=True, reduction="mean", weight=self.class_weights)
+                return DiceCELoss(softmax=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
 
     def compute_loss(self, predictions, targets):
         if len(targets.shape) == 3:
