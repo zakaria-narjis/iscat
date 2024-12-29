@@ -5,9 +5,9 @@ data:
   seg_method: "comdet"
   data_type: "Brightfield"
   normalize: false
-  data_paths:
-    - "dataset/2024_11_12/Metasurface/Chip_01"
+  data_paths:  
     - "dataset/2024_11_11/Metasurface/Chip_02"
+    - "dataset/2024_11_12/Metasurface/Chip_01"
   train_dataset:
     image_paths: "<path_to_train_images>"
     target_paths: "<path_to_train_targets>"
