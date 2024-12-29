@@ -11,6 +11,8 @@ import re
 from datetime import datetime
 from omegaconf import OmegaConf
 from torch.utils.tensorboard import SummaryWriter
+import random
+import numpy as np
 
 def load_config(config_path):
     """
@@ -36,11 +38,28 @@ def create_dataloaders(train_dataset, valid_dataset, batch_size):
 def sanitize_filename(name):
     return re.sub(r"[^\w\-_\. ]", "_", name)
 
+def set_random_seed(seed):
+    """
+    Set the random seed for reproducibility in Python, NumPy, PyTorch, and CUDA.
+
+    Args:
+        seed (int): The seed value to use.
+    """
+    random.seed(seed)  # Python random
+    np.random.seed(seed)  # NumPy
+    torch.manual_seed(seed)  # PyTorch CPU
+    torch.cuda.manual_seed(seed)  # PyTorch GPU
+    torch.cuda.manual_seed_all(seed)  # PyTorch all GPUs
+    
+    # Ensure deterministic behavior (may slow down performance)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def getdatetime():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 def main(args):
+    set_random_seed(42)
     # Load configuration
     config = load_config(args.config)
     experiment_name = sanitize_filename(config['experiment_name'])
