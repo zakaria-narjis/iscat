@@ -11,10 +11,6 @@ from enum import Enum
 from src.data_processing.utils import Utils
 from tqdm import tqdm
 import logging
-class LossType(Enum):
-    CROSSENTROPY = "crossentropy"
-    DICE = "dice"
-    COMBINED = "combined"
 
 class Trainer:
     def __init__(
@@ -67,18 +63,21 @@ class Trainer:
 
     def _initialize_loss(self):
         if self.num_classes == 1:
-            if self.loss_type == LossType.CROSSENTROPY:
+            if self.loss_type == "crossentropy":
                 return nn.BCEWithLogitsLoss()
-            elif self.loss_type == LossType.DICE:
+            elif self.loss_type == "dice":
                 return DiceLoss(sigmoid=True, squared_pred=False, batch=True, reduction="mean")
             else:
                 return DiceCELoss(sigmoid=True, squared_pred=False, batch=True, reduction="mean")
         else:
-            if self.loss_type == LossType.CROSSENTROPY:
+            if self.loss_type == "crossentropy":
+                self.logger.info("Using CrossEntropy Loss ")
                 return nn.CrossEntropyLoss(weight=self.class_weights)
-            elif self.loss_type == LossType.DICE:
+            elif self.loss_type == "dice":
+                self.logger.info("Using Dice Loss ")
                 return DiceLoss(softmax=True, squared_pred=False, batch=True, reduction="mean")
             else:
+                self.logger.info("Using Dice CrossEntropy Loss ")
                 return DiceCELoss(softmax=True, squared_pred=False, batch=True, reduction="mean", weight=self.class_weights)
 
     def compute_loss(self, predictions, targets):
@@ -100,8 +99,9 @@ class Trainer:
             pred_masks = (torch.softmax(predictions, dim=1) > 0.5).float()
             pred_one_hot = pred_masks
 
-        target_one_hot = one_hot(targets, num_classes=self.num_classes)
-        return self.miou_metric(pred_one_hot, target_one_hot).nanmean().item()
+        target_one_hot = torch.cat([1 - targets, targets], dim=1)
+        metric = self.miou_metric(pred_one_hot, target_one_hot)
+        return metric.nanmean().item()
 
     def train_epoch(self, train_loader, epoch):
         self.model.train()
@@ -168,7 +168,7 @@ class Trainer:
             else:
                 no_improve += 1
 
-            self.logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
+            self.logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}, LR: {self.optimizer.param_groups[0]['lr']:.2e}")
             if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break

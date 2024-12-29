@@ -59,7 +59,7 @@ def getdatetime():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 def main(args):
-    set_random_seed(42)
+    set_random_seed(0)
     # Load configuration
     config = load_config(args.config)
     experiment_name = sanitize_filename(config['experiment_name'])
