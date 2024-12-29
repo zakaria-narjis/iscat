@@ -6,6 +6,7 @@ import numpy as np
 from src.data_processing.labeler import Labeler
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+import torch
 class Utils_legacy:
     @staticmethod
     def get_data_paths(root_path, mode="Brightfield"):
@@ -130,7 +131,7 @@ class Utils:
         elif seg_method == "kmeans":
             mask_suffix = "_mask_kmeans.npy"
         else:
-            raise ValueError("Invalid segmentation method")
+            raise ValueError(f"Invalid segmentation method: {seg_method}")
         for target_path in target_paths:
             masks_path = []
             for fluo_mask_idx in fluo_masks_indices:
@@ -181,3 +182,27 @@ class Utils:
         plt.axis('off')
         plt.show()
     
+    @staticmethod
+    def calculate_class_weights_from_masks(masks):
+
+        class_counts = torch.zeros(2, dtype=torch.float)
+
+        flattened_masks = masks.view(-1)  # Combine N, H, W into a single dimension
+
+        unique, counts = torch.unique(flattened_masks.cpu(), return_counts=True)
+
+        for label, count in zip(unique, counts):
+            label = int(label)  # Ensure label is an integer
+            class_counts[label] += count
+
+        total_pixels = class_counts.sum()
+        class_weights = total_pixels / (2 * class_counts)  # 2 is number of classes
+
+        class_weights = class_weights / class_weights.sum()
+        
+        return class_weights
+    
+    @staticmethod
+    def z_score_normalize(images,mean,std, eps: float = 1e-8):
+        normalized_images = (images - mean) / (std + eps)
+        return normalized_images

@@ -1,0 +1,123 @@
+import os
+import argparse
+import yaml
+import torch
+from torch.utils.data import DataLoader
+from src.data_processing.dataset import iScatDataset 
+from src.trainers import Trainer
+from src.models.Unet import UNet
+from src.data_processing.utils import Utils  # Assuming utility functions like get_data_paths are in utils.py
+import re
+from datetime import datetime
+from omegaconf import OmegaConf
+from torch.utils.tensorboard import SummaryWriter
+
+def load_config(config_path):
+    """
+    Load configuration file with variable interpolation support using OmegaConf.
+    """
+    # Load the YAML file using OmegaConf
+    config = OmegaConf.load(config_path)
+    
+    # Resolve all variable interpolations
+    resolved_config = OmegaConf.to_container(config, resolve=True)
+    
+    return resolved_config
+
+def get_args_parser(add_help:bool=True):
+    parser = argparse.ArgumentParser(description='iScat Segmentation')
+    parser.add_argument('--config', type=str, required=True, help='Path to the configuration file')
+    return parser
+
+def create_dataloaders(train_dataset, valid_dataset, batch_size):
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
+    return train_loader, val_loader
+def sanitize_filename(name):
+    return re.sub(r"[^\w\-_\. ]", "_", name)
+
+
+def getdatetime():
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+def main(args):
+    # Load configuration
+    config = load_config(args.config)
+    experiment_name = sanitize_filename(config['experiment_name'])
+    experiment_folder_name = f'{experiment_name}_{getdatetime()}'
+    experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
+    experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
+    writer = SummaryWriter(log_dir=experiment_dir)
+    # Set device
+    device = torch.device(config['training']['device'] if torch.cuda.is_available() else 'cpu')
+          
+    os.makedirs(experiment_dir, exist_ok=True)
+    with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
+        yaml.dump(config, f)
+    # Get data paths
+    image_paths, target_paths = [], []
+    for data_path in config['data']['data_paths']:
+        i, t = Utils.get_data_paths(data_path, mode=config['data']['data_type'])
+        image_paths.extend(i)
+        target_paths.extend(t)
+
+    # Create datasets
+    train_dataset = iScatDataset(
+        image_paths[:-2],
+        target_paths[:-2],
+        preload_image=config['data']['train_dataset']['preload_image'],
+        image_size=tuple(config['data']['train_dataset']['image_size']),
+        apply_augmentation=config['data']['train_dataset']['apply_augmentation'],
+        normalize=config['data']['train_dataset']['normalize'],
+        device=device,
+        fluo_masks_indices=config['data']['train_dataset']['fluo_masks_indices'],
+        seg_method=config['data']['train_dataset']['seg_method']
+    )
+
+    valid_dataset = iScatDataset(
+        image_paths[-2:],
+        target_paths[-2:],
+        preload_image=config['data']['valid_dataset']['preload_image'],
+        image_size=tuple(config['data']['valid_dataset']['image_size']),
+        apply_augmentation=config['data']['valid_dataset']['apply_augmentation'],
+        normalize=config['data']['valid_dataset']['normalize'],
+        device=device,
+        fluo_masks_indices=config['data']['valid_dataset']['fluo_masks_indices'],
+        seg_method=config['data']['valid_dataset']['seg_method']
+    )
+
+    # Create dataloaders
+    train_loader, val_loader = create_dataloaders(
+        train_dataset, valid_dataset, batch_size=config['training']['batch_size']
+    )
+
+    # Initialize model
+    model = UNet(
+        in_channels=config['model']['in_channels'],
+        num_classes=config['model']['num_classes'],
+        init_features=config['model']['init_features'],
+        pretrained=config['model']['pretrained']
+    )
+    if config['training']['class_weights']['use']:
+        class_weights=Utils.calculate_class_weights_from_masks(train_dataset.masks).to(device)
+    else:
+        class_weights=None
+    # Initialize trainer
+    trainer = Trainer(
+        model=model,
+        device=device,
+        config=config['training'],
+        writer=writer,
+        experiment_dir=experiment_dir,
+        class_weights=class_weights
+    )
+
+    # Train the model
+    trainer.train(
+        train_loader, val_loader,
+        num_epochs=config['training']['num_epochs']
+    )
+
+if __name__ == "__main__":
+    args = get_args_parser().parse_args()
+    main(args)

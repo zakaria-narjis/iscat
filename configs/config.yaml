@@ -1,0 +1,74 @@
+experiment_name: "UNet_Metasurface"
+data:
+  image_size: 256
+  fluo_masks_indices: [0]
+  seg_method: "comdet"
+  data_type: "Brightfield"
+  normalize: false
+  data_paths:
+    - "dataset/2024_11_12/Metasurface/Chip_01"
+    - "dataset/2024_11_11/Metasurface/Chip_02"
+  train_dataset:
+    image_paths: "<path_to_train_images>"
+    target_paths: "<path_to_train_targets>"
+    preload_image: true
+    apply_augmentation: true
+    normalize: ${data.normalize}
+    device: ${training.device}
+    fluo_masks_indices: ${data.fluo_masks_indices}
+    seg_method: ${data.seg_method}
+    image_size:
+      - ${data.image_size}
+      - ${data.image_size}
+  valid_dataset:
+    image_paths: "<path_to_validation_images>"
+    target_paths: "<path_to_validation_targets>"
+    preload_image: true
+    apply_augmentation: false
+    normalize: ${data.normalize}
+    device: ${training.device}
+    fluo_masks_indices: ${data.fluo_masks_indices}
+    seg_method: ${data.seg_method}
+    image_size:
+      - ${data.image_size}
+      - ${data.image_size}
+
+training:
+  batch_size: 32
+  num_epochs: 100
+  device: "cuda"
+  loss_type: "dice" # Options: crossentropy, dice, combined
+  num_classes: ${model.num_classes}
+  class_weights:
+    use: true
+    calculation_method: "from_masks"
+  optimizer:
+    type: "Adam"
+    parameters:
+      lr: 1e-4
+  scheduler:
+    type: "ReduceLROnPlateau"
+    parameters:
+      mode: "min"
+      factor: 0.1
+      patience: 8
+      verbose: true
+  early_stopping:
+    enabled: true
+    patience: 20
+
+model:
+  type: "UNet"
+  in_channels: 3
+  num_classes: 2
+  init_features: 64
+  pretrained: false
+
+logging:
+  tensorboard:
+    log_dir: "experiments/runs"
+
+normalization:
+  z_score:
+    enabled: true
+    eps: 1e-8

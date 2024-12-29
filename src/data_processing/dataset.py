@@ -37,6 +37,8 @@ class iScatDataset(Dataset):
             self.images=self.images.to(dtype=torch.float32)
             if self.normalize:
                 self.images = self.normalize_image(self.images)
+            self.mean = self.images.mean(dim=(0, 2, 3), keepdim=True).to(self.device) 
+            self.std = self.images.std(dim=(0, 2, 3), keepdim=True).to(self.device)
         self.image_paths = np.concatenate([self.image_paths])
         self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
 
@@ -94,7 +96,9 @@ class iScatDataset(Dataset):
         if self.preload_image:
             image = self.images[index_in_images]
         else:
-            image = nd2.imread(self.image_paths[index])
+            image = imread(self.image_paths[index])
+            image = torch.from_numpy(image).float()
+            image = image.to(dtype=torch.float32)         
         mask = self.masks[index_in_images]
         x, y = self.transform(image, mask)
         return x, y

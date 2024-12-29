@@ -8,7 +8,9 @@ from monai.losses import DiceLoss, DiceCELoss
 from monai.metrics import MeanIoU
 from monai.networks.utils import one_hot
 from enum import Enum
-
+from src.data_processing.utils import Utils
+from tqdm import tqdm
+import logging
 class LossType(Enum):
     CROSSENTROPY = "crossentropy"
     DICE = "dice"
@@ -22,7 +24,8 @@ class Trainer:
         config: dict,
         experiment_dir: str,
         class_weights=None,
-        writer: SummaryWriter = None
+        writer: SummaryWriter = None,
+        verbose: bool = True
     ):
         """
         Args:
@@ -32,28 +35,31 @@ class Trainer:
             experiment_dir (str): Directory to save logs and checkpoints.
             class_weights (list): Class weights for loss computation.
             writer (SummaryWriter): Tensorboard writer.
+            verbose (bool): If False, suppress output logs.
         """
-        self.num_classes = config.get('num_classes', 2)
+        self.num_classes = config['num_classes']
         self.model = model.to(device)
         self.device = device
-        self.loss_type = config.get("loss_type")
+        self.loss_type = config['loss_type']
         self.class_weights = class_weights
         self.config = config
-        self.earlystoping_patience = config.get('earlystoping_patience', 10)
+        self.earlystoping_patience = config['early_stopping']['patience']
 
-        # Save config to log directory
-        os.makedirs(experiment_dir, exist_ok=True)
-        with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
-            yaml.dump(config, f)
+        # Configure logging
+        self.logger = logging.getLogger(__name__)
+        log_level = logging.DEBUG if verbose else logging.WARNING
+        logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
         # Initialize loss function
         self.loss = self._initialize_loss()
 
         # Initialize metrics
         self.miou_metric = MeanIoU(include_background=True, reduction="mean")
-        self.optimizer = optim.Adam(model.parameters(), lr=self.config['learning_rate'])
+        self.optimizer = optim.Adam(model.parameters(), lr=self.config['optimizer']['parameters']['lr'])
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min', factor=self.config['scheduler_factor'], patience=self.config['scheduler_patience'], verbose=True
+            self.optimizer, mode='min', factor=self.config['scheduler']['parameters']['factor'], 
+            patience=self.config['scheduler']['parameters']['patience'], 
+            verbose=self.config['scheduler']['parameters']['verbose'],
         )
 
         self.writer = writer
@@ -103,7 +109,7 @@ class Trainer:
         total_miou = 0.0
         for batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(self.device), masks.to(self.device)
-
+            images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
             self.optimizer.zero_grad()
             predictions = self.model(images)
             loss = self.compute_loss(predictions, masks)
@@ -128,6 +134,7 @@ class Trainer:
 
         for images, masks in val_loader:
             images, masks = images.to(self.device), masks.to(self.device)
+            images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
             predictions = self.model(images)
             total_loss += self.compute_loss(predictions, masks).item()
             total_miou += self.compute_metrics(predictions, masks)
@@ -137,7 +144,10 @@ class Trainer:
     def train(self, train_loader, val_loader, num_epochs):
         best_val_miou = 0.0
         no_improve = 0
-        for epoch in range(num_epochs):
+        self.normalization_mean = train_loader.dataset.mean
+        self.normalization_std = train_loader.dataset.std
+
+        for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             train_loss, train_miou = self.train_epoch(train_loader, epoch)
             val_loss, val_miou = self.validate(val_loader)
 
@@ -158,7 +168,7 @@ class Trainer:
             else:
                 no_improve += 1
 
-            print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
-            if no_improve >= self.earlystoping_patience:
-                print(f"Early stopping at epoch {epoch+1}")
+            self.logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
+            if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
+                self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break
