@@ -1,7 +1,7 @@
 experiment_name: "UNet_Metasurface"
 data:
   image_size: 256
-  fluo_masks_indices: [0]
+  fluo_masks_indices: [1]
   seg_method: "comdet"
   data_type: "Brightfield"
   normalize: false
@@ -36,7 +36,7 @@ data:
 training:
   batch_size: 32
   num_epochs: 100
-  device: "cuda"
+  device: "cuda:12"
   loss_type: "dice" # Options: crossentropy, dice, combined
   num_classes: ${model.num_classes}
   class_weights:
