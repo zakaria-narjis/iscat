@@ -76,7 +76,7 @@ def main(args):
     # Get data paths
     image_paths, target_paths = [], []
     for data_path in config['data']['data_paths']:
-        i, t = Utils.get_data_paths(data_path, mode=config['data']['data_type'])
+        i, t = Utils.get_data_paths(data_path, mode=config['data']['data_type'],image_indices=config['data']['image_indices'])
         image_paths.extend(i)
         target_paths.extend(t)
 

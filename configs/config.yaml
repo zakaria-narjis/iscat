@@ -1,6 +1,7 @@
 experiment_name: "UNet_Metasurface"
 data:
   image_size: 256
+  image_indices: 3 # if int it will be mean of chunks of the images, if list it will be the indices
   fluo_masks_indices: [1]
   seg_method: "comdet"
   data_type: "Brightfield"
