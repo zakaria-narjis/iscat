@@ -1,4 +1,5 @@
 experiment_name: "UNet_Metasurface"
+seed: 0
 data:
   image_size: 256
   image_indices: 6 # if int it will be mean of chunks of the images, if list it will be the indices [0,100,200]

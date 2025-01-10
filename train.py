@@ -84,10 +84,10 @@ def set_random_seed(seed):
 def getdatetime():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-def main(args):
-    set_random_seed(0)
+def main(args):  
     # Load configuration
     config = load_config(args.config)
+    set_random_seed(config['seed'])
     experiment_name = sanitize_filename(config['experiment_name'])
     experiment_folder_name = f'{experiment_name}_{getdatetime()}'
     experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
