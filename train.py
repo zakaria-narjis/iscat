@@ -26,6 +26,32 @@ def load_config(config_path):
     
     return resolved_config
 
+def format_config_for_tensorboard(config, parent_key=''):
+    """
+    Recursively formats nested config dictionary into a markdown table string.
+    
+    Args:
+        config (dict): Configuration dictionary
+        parent_key (str): Key of parent dictionary (used for recursion)
+        
+    Returns:
+        str: Markdown formatted table of parameters
+    """
+    text_lines = []
+    
+    if not parent_key:
+        text_lines.append("| Parameter | Value |")
+        text_lines.append("|-----------|--------|")
+    
+    for key, value in config.items():
+        full_key = f"{parent_key}.{key}" if parent_key else key
+        if isinstance(value, dict):
+            text_lines.extend(format_config_for_tensorboard(value, full_key))
+        else:
+            text_lines.append(f"| {full_key} | {value} |")
+            
+    return '\n'.join(text_lines)
+
 def get_args_parser(add_help:bool=True):
     parser = argparse.ArgumentParser(description='iScat Segmentation')
     parser.add_argument('--config', type=str, required=True, help='Path to the configuration file')
@@ -67,6 +93,10 @@ def main(args):
     experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
     experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
     writer = SummaryWriter(log_dir=experiment_dir)
+
+    # Log config to TensorBoard
+    config_text = format_config_for_tensorboard(config)
+    writer.add_text("Configuration", config_text)
     # Set device
     device = torch.device(config['training']['device'] if torch.cuda.is_available() else 'cpu')
           
