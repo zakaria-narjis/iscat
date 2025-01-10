@@ -32,7 +32,7 @@ class Utils:
                 if type(image_indices) is list:
                     zimages_files.append([os.path.join(dirpath, f"frame_{idx}.tiff") for idx in image_indices])
                 elif type(image_indices) is int:
-                    zimages_files.append([os.path.join(dirpath, f"frame_{idx}_mean.tiff") for idx in range(image_indices)])
+                    zimages_files.append([os.path.join(dirpath, f"frame_{idx}_{image_indices}_mean.tiff") for idx in range(image_indices)])
                 else:
                     raise ValueError("Invalid image_indices type")
                 if  not all(os.path.exists(path) for path in zimages_files[-1]): 
@@ -85,7 +85,7 @@ class Utils:
                 for idx, frame in enumerate(frames):
                     output_path = os.path.join(
                         dirpath, 
-                        f"frame_{idx}_mean.tiff"
+                        f"frame_{idx}_{indices}_mean.tiff"
                     )
                     imwrite(output_path, frame, dtype='uint16')
                     print(f"Saved: {output_path}")

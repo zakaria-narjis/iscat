@@ -111,8 +111,15 @@ def main(args):
     )
 
     # Initialize model
+    if type(config['data']['image_indices'])==int:
+        input_channels = config['data']['image_indices']
+    elif type(config['data']['image_indices'])==list:
+        input_channels = len(config['data']['image_indices'])
+    else:
+        raise ValueError("Invalid image_indices type")
+   
     model = UNet(
-        in_channels=config['model']['in_channels'],
+        in_channels=input_channels,
         num_classes=config['model']['num_classes'],
         init_features=config['model']['init_features'],
         pretrained=config['model']['pretrained']
