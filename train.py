@@ -133,7 +133,7 @@ def main(args):
     config = load_config(args.config)
     set_random_seed(config['seed'])
     experiment_name = sanitize_filename(config['experiment_name'])
-    experiment_folder_name = f'{config['model']['type']}_{config['data']['data_type']}_{getdatetime()}'
+    experiment_folder_name = f'{config["model"]["type"]}_{config["data"]["data_type"]}_{getdatetime()}'
     experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
     experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
     writer = SummaryWriter(log_dir=experiment_dir)
