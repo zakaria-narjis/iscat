@@ -25,49 +25,31 @@ class iScatDataset(Dataset):
         self.duplication_factor = duplication_factor #number of times to repeat the image
         self.normalize = normalize
         self.device = device
+        
+        self.images = []
+        for z_images in tqdm(self.image_paths, desc="Loading images to Memory"):
+            # Read each frame and stack them into a single array
+            frames = [imread(frame_path) for frame_path in z_images]
+            stacked_frames = np.stack(frames, axis=0)  # Shape: (3, H, W)
+            self.images.append(stacked_frames)
+        self.images = np.concatenate([self.images],axis=0)
+        self.images = torch.from_numpy(self.images)
+        self.images=self.images.to(dtype=torch.float32)
+        self.mean = self.images.mean(dim=(0, 2, 3), keepdim=True).to(self.device) 
+        self.std = self.images.std(dim=(0, 2, 3), keepdim=True).to(self.device)
         if self.preload_image:
-            self.images = []
-            for z_images in tqdm(self.image_paths, desc="Loading TIFF images to Memory"):
-                # Read each frame and stack them into a single array
-                frames = [imread(frame_path) for frame_path in z_images]
-                stacked_frames = np.stack(frames, axis=0)  # Shape: (3, H, W)
-                self.images.append(stacked_frames)
-            self.images = np.concatenate([self.images],axis=0)
-            self.images = torch.from_numpy(self.images)
-            self.images=self.images.to(dtype=torch.float32)
-            if self.normalize:
-                self.images = self.normalize_image(self.images)
-            self.mean = self.images.mean(dim=(0, 2, 3), keepdim=True).to(self.device) 
-            self.std = self.images.std(dim=(0, 2, 3), keepdim=True).to(self.device)
+            self.images = self.images.to(self.device)     
+        else:
+             self.images = []
         self.image_paths = np.concatenate([self.image_paths])
-        self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
+        # self.image_paths = np.repeat(self.image_paths,self.duplication_factor,axis=0)
+
 
         self.masks =  Utils.load_np_masks(target_paths,self.fluo_masks_indices,seg_method=self.seg_method)
         self.masks = torch.from_numpy(self.masks).float()
         self.masks = self.masks.to(dtype=torch.float32)
-
         self.masks = self.masks.to(self.device)
-        self.images = self.images.to(self.device)
-
-
-    def normalize_image(self, image, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225], eps: float = 1e-8):
-        """
-        Normalize an image: cast to float32 and normalize using mean and std.
-        Args:
-            image (torch.Tensor): Input image.
-            mean (list): Mean values for normalization.
-            std (list): Standard deviation values for normalization.
-        Returns:
-            torch.Tensor: Normalized image in float32 format.
-        """
-        normalized_images = image/65535.0
-        # Compute mean and std for each image in the batch
-        mean = normalized_images .mean(dim=( 2, 3), keepdim=True)  # Shape: (N, 1, 1, 1)
-        std = normalized_images .std(dim=( 2, 3), keepdim=True)    # Shape: (N, 1, 1, 1)
         
-        # Perform z-score normalization
-        normalized_images = (normalized_images - mean) / (std + eps)
-        return normalized_images
 
     def augment(self, image, mask):
         if random.random() > 0.5:
@@ -96,7 +78,7 @@ class iScatDataset(Dataset):
         if self.preload_image:
             image = self.images[index_in_images]
         else:
-            image = imread(self.image_paths[index])
+            image = imread(self.image_paths[index_in_images])
             image = torch.from_numpy(image).float()
             image = image.to(dtype=torch.float32)         
         mask = self.masks[index_in_images]

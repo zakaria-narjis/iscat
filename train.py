@@ -26,31 +26,6 @@ def load_config(config_path):
     
     return resolved_config
 
-def format_config_for_tensorboard(config, parent_key=''):
-    """
-    Recursively formats nested config dictionary into a markdown table string.
-    
-    Args:
-        config (dict): Configuration dictionary
-        parent_key (str): Key of parent dictionary (used for recursion)
-        
-    Returns:
-        str: Markdown formatted table of parameters
-    """
-    text_lines = []
-    
-    if not parent_key:
-        text_lines.append("| Parameter | Value |")
-        text_lines.append("|-----------|--------|")
-    
-    for key, value in config.items():
-        full_key = f"{parent_key}.{key}" if parent_key else key
-        if isinstance(value, dict):
-            text_lines.extend(format_config_for_tensorboard(value, full_key))
-        else:
-            text_lines.append(f"| {full_key} | {value} |")
-            
-    return '\n'.join(text_lines)
 
 def get_args_parser(add_help:bool=True):
     parser = argparse.ArgumentParser(description='iScat Segmentation')
@@ -84,19 +59,88 @@ def set_random_seed(seed):
 def getdatetime():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+def write_config_to_tensorboard(writer, config):
+    """
+    Write selected configuration parameters to TensorBoard.
+    Handles both scalar and list values in the config.
+    
+    Args:
+        writer: TensorBoard SummaryWriter instance
+        config: Nested configuration dictionary
+    """
+    # Define the important parameters to extract
+    important_params = {
+        'General': ['seed', 'experiment_name'],
+        'Data': [
+            ('data.image_size', 'Image Size'),
+            ('data.image_indices', 'Image Indices'),
+            ('data.fluo_masks_indices', 'Fluorescence Mask Indices'),
+            ('data.seg_method', 'Segmentation Method'),
+            ('data.data_type', 'Data Type')
+        ],
+        'Training': [
+            ('training.batch_size', 'Batch Size'),
+            ('training.num_epochs', 'Epochs'),
+            ('training.loss_type', 'Loss Type')
+        ],
+        'Model': [
+            ('model.type', 'Model Type'),
+            ('model.num_classes', 'Number of Classes'),
+            ('model.init_features', 'Initial Features')
+        ]
+    }
+    
+    def get_nested_value(config, key_path):
+        """Extract value from nested config using dot notation."""
+        keys = key_path.split('.')
+        value = config
+        for k in keys:
+            value = value[k]
+        return value
+    
+    def format_value(value):
+        """Format value for display, handling lists and other types."""
+        if isinstance(value, list):
+            return str(value).replace('[', '').replace(']', '')
+        return str(value)
+    
+    # Create markdown table for each section
+    for section, params in important_params.items():
+        table_rows = ["|Parameter|Value|", "|-|-|"]
+        
+        for param in params:
+            if isinstance(param, tuple):
+                key_path, display_name = param
+                try:
+                    value = get_nested_value(config, key_path)
+                    table_rows.append(f"|{display_name}|{format_value(value)}|")
+                except (KeyError, TypeError):
+                    continue
+            else:
+                try:
+                    value = config[param]
+                    table_rows.append(f"|{param}|{format_value(value)}|")
+                except (KeyError, TypeError):
+                    continue
+        
+        writer.add_text(
+            f"Configuration/{section}",
+            "\n".join(table_rows)
+        )
+
 def main(args):  
     # Load configuration
     config = load_config(args.config)
     set_random_seed(config['seed'])
     experiment_name = sanitize_filename(config['experiment_name'])
-    experiment_folder_name = f'{experiment_name}_{getdatetime()}'
+    experiment_folder_name = f'{config['model']['type']}_{config['data']['data_type']}_{getdatetime()}'
     experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
     experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
     writer = SummaryWriter(log_dir=experiment_dir)
+    write_config_to_tensorboard(writer, config)
 
     # Log config to TensorBoard
-    config_text = format_config_for_tensorboard(config)
-    writer.add_text("Configuration", config_text)
+
     # Set device
     device = torch.device(config['training']['device'] if torch.cuda.is_available() else 'cpu')
           
