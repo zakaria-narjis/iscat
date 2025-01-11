@@ -86,4 +86,5 @@ class iScatDataset(Dataset):
         return x, y
 
     def __len__(self):
-        return len(self.image_paths)
+        length = len(self.image_paths)*self.duplication_factor
+        return length
