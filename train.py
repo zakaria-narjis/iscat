@@ -86,7 +86,6 @@ def write_config_to_tensorboard(writer, config):
         ],
         'Model': [
             ('model.type', 'Model Type'),
-            ('model.num_classes', 'Number of Classes'),
             ('model.init_features', 'Initial Features')
         ]
     }
@@ -192,10 +191,10 @@ def main(args):
         input_channels = len(config['data']['image_indices'])
     else:
         raise ValueError("Invalid image_indices type")
-   
+    num_classes = len(config['data']['train_dataset']['fluo_masks_indices']) + 1 
     model = UNet(
         in_channels=input_channels,
-        num_classes=config['model']['num_classes'],
+        num_classes=num_classes,
         init_features=config['model']['init_features'],
         pretrained=config['model']['pretrained']
     )

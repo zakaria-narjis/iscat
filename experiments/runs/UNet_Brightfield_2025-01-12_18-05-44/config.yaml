@@ -35,7 +35,7 @@ data:
     preload_image: true
     seg_method: comdet
     target_paths: <path_to_validation_targets>
-experiment_name: UNet_0_12
+experiment_name: UNet
 logging:
   tensorboard:
     log_dir: experiments/runs
@@ -61,7 +61,7 @@ training:
     patience: 20
   loss_type: dice
   num_classes: 2
-  num_epochs: 100
+  num_epochs: 200
   optimizer:
     parameters:
       lr: 0.0001

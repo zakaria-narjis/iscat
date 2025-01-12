@@ -5,7 +5,8 @@ data:
   data_type: Brightfield
   fluo_masks_indices:
   - 0
-  image_indices: 3
+  - 1
+  image_indices: 12
   image_size: 256
   normalize: false
   seg_method: comdet
@@ -14,6 +15,7 @@ data:
     device: cuda:11
     fluo_masks_indices:
     - 0
+    - 1
     image_paths: <path_to_train_images>
     image_size:
     - 256
@@ -27,6 +29,7 @@ data:
     device: cuda:11
     fluo_masks_indices:
     - 0
+    - 1
     image_paths: <path_to_validation_images>
     image_size:
     - 256
@@ -35,20 +38,21 @@ data:
     preload_image: true
     seg_method: comdet
     target_paths: <path_to_validation_targets>
-experiment_name: UNet_Metasurface
+experiment_name: UNet
 logging:
   tensorboard:
     log_dir: experiments/runs
 model:
   in_channels: 3
   init_features: 64
-  num_classes: 2
+  num_classes: 3
   pretrained: false
   type: UNet
 normalization:
   z_score:
     enabled: true
     eps: 1.0e-08
+seed: 0
 training:
   batch_size: 32
   class_weights:
@@ -59,8 +63,8 @@ training:
     enabled: true
     patience: 20
   loss_type: dice
-  num_classes: 2
-  num_epochs: 100
+  num_classes: 3
+  num_epochs: 200
   optimizer:
     parameters:
       lr: 0.0001

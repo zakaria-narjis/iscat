@@ -44,11 +44,11 @@ def plot_image_with_masks(image, predicted_mask, ground_truth_mask, output_path=
     # Define colors for predicted and ground truth masks
     predicted_colors = {
         1: (0, 255, 0),      # Green for class 1
-        2: (0, 200, 100),    # Light green for class 2
+        2: (0, 0, 255),    # Blue for class 2
     }
     gt_colors = {
         1: (255, 0, 0),      # Red for class 1
-        2: (200, 50, 50),    # Light red for class 2
+        2: (255,255, 0),    # Yellow for class 2
     }
 
     # Normalize image for visualization

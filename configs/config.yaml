@@ -1,9 +1,9 @@
-experiment_name: "UNet_Metasurface"
+experiment_name: "UNet" #not used
 seed: 0
 data:
   image_size: 256
-  image_indices: 6 # if int it will be mean of chunks of the images, if list it will be the indices [0,100,200]
-  fluo_masks_indices: [1]
+  image_indices: 12 # if int it will be mean of chunks of the images, if list it will be the indices [0,100,200]
+  fluo_masks_indices: [0,1]
   seg_method: "comdet"
   data_type: "Brightfield"
   normalize: false
@@ -37,7 +37,7 @@ data:
 
 training:
   batch_size: 32
-  num_epochs: 100
+  num_epochs: 200
   device: "cuda:11"
   loss_type: "dice" # Options: crossentropy, dice, combined
   num_classes: ${model.num_classes}
@@ -54,15 +54,15 @@ training:
       mode: "min"
       factor: 0.1
       patience: 8
-      verbose: true
+      verbose: true #not used 
   early_stopping:
     enabled: true
     patience: 20
 
 model:
   type: "UNet"
-  in_channels: 3
-  num_classes: 2
+  in_channels: 3 #not used  
+  num_classes: 3 #not used  
   init_features: 64
   pretrained: false
 
