@@ -155,9 +155,13 @@ class Utils:
             for mask_path in masks_path:
                 mask = np.load(mask_path)
                 masks.append(mask)
-            mask= sum(masks)
-            mask[mask>1]=1
-            all_masks.append(mask)
+            combined_mask = np.zeros_like(masks[0])
+            for class_index, mask in enumerate(masks, start=1):
+                combined_mask[mask == 1] = class_index
+            # mask= sum(masks)
+            # mask[mask>1]=1
+            # all_masks.append(mask)
+            all_masks.append(combined_mask)
         all_masks = np.concatenate([all_masks],axis=0)
         return all_masks
     
@@ -191,26 +195,49 @@ class Utils:
         plt.axis('off')
         plt.show()
     
+    # @staticmethod
+    # def calculate_class_weights_from_masks(masks: torch.Tensor) -> torch.Tensor:
+    #     """
+    #     Calculate class weights for a binary segmentation task based on the provided masks.
+    #     """
+    #     class_counts = torch.zeros(2, dtype=torch.float)
+
+    #     flattened_masks = masks.view(-1)  # Combine N, H, W into a single dimension
+
+    #     unique, counts = torch.unique(flattened_masks.cpu(), return_counts=True)
+
+    #     for label, count in zip(unique, counts):
+    #         label = int(label)  # Ensure label is an integer
+    #         class_counts[label] += count
+
+    #     total_pixels = class_counts.sum()
+    #     class_weights = total_pixels / (2 * class_counts)  # 2 is number of classes
+
+    #     class_weights = class_weights / class_weights.sum()
+        
+    #     return class_weights
+    
     @staticmethod
     def calculate_class_weights_from_masks(masks: torch.Tensor) -> torch.Tensor:
         """
-        Calculate class weights for a binary segmentation task based on the provided masks.
-        """
-        class_counts = torch.zeros(2, dtype=torch.float)
-
-        flattened_masks = masks.view(-1)  # Combine N, H, W into a single dimension
-
-        unique, counts = torch.unique(flattened_masks.cpu(), return_counts=True)
-
-        for label, count in zip(unique, counts):
-            label = int(label)  # Ensure label is an integer
-            class_counts[label] += count
-
-        total_pixels = class_counts.sum()
-        class_weights = total_pixels / (2 * class_counts)  # 2 is number of classes
-
-        class_weights = class_weights / class_weights.sum()
+        Calculate class weights for a segmentation task with any number of classes.
         
+        Args:
+            masks (torch.Tensor): Tensor of shape (N, H, W), where N is the number of samples,
+                                and each value in the masks represents a class (0 to C-1).
+        
+        Returns:
+            torch.Tensor: Class weights of shape (C,), where C is the number of classes.
+        """
+        num_classes = int(masks.max().item() + 1)  # Assume classes are from 0 to C-1
+        class_counts = torch.zeros(num_classes, dtype=torch.float, device=masks.device)
+        flattened_masks = masks.view(-1)
+        unique, counts = torch.unique(flattened_masks, return_counts=True)     
+        for label, count in zip(unique, counts):
+            class_counts[int(label)] += count  # Accumulate pixel counts for each class
+        total_pixels = class_counts.sum()
+        class_weights = total_pixels / (num_classes * class_counts)
+        class_weights = class_weights / class_weights.sum()    
         return class_weights
     
     @staticmethod

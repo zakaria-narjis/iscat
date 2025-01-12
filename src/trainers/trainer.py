@@ -82,24 +82,22 @@ class Trainer:
     def compute_loss(self, predictions, targets):
         if len(targets.shape) == 3:
             targets = targets.unsqueeze(1)
-            if self.num_classes > 1:
-                targets = one_hot(targets, num_classes=self.num_classes)
-        targets = targets.float()
+        targets = one_hot(targets, num_classes=self.num_classes, dim=1)
         return self.loss(predictions, targets)
 
     def compute_metrics(self, predictions, targets):
         if len(targets.shape) == 3:
-            targets = targets.unsqueeze(1)
+            targets = targets.unsqueeze(1) # [B, 1, H, W]
 
         if self.num_classes == 1:
             pred_masks = (torch.sigmoid(predictions) > 0.5).float()
             pred_one_hot = torch.cat([1 - pred_masks, pred_masks], dim=1)
         else:
-            pred_masks = (torch.softmax(predictions, dim=1) > 0.5).float()
-            pred_one_hot = pred_masks
+            pred_one_hot = torch.argmax(torch.softmax(predictions, dim=1), dim=1, keepdim=True) # [B, N, H, W]
 
-        target_one_hot = torch.cat([1 - targets, targets], dim=1)
-        metric = self.miou_metric(pred_one_hot, target_one_hot)
+        # target_one_hot = torch.cat([1 - targets, targets], dim=1)
+        target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
+        metric = self.miou_metric(pred_one_hot, target_one_hot) # [B, N, H, W]
         return metric.nanmean().item()
 
     def train_epoch(self, train_loader, epoch):
