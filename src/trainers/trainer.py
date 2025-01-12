@@ -93,8 +93,8 @@ class Trainer:
             pred_masks = (torch.sigmoid(predictions) > 0.5).float()
             pred_one_hot = torch.cat([1 - pred_masks, pred_masks], dim=1)
         else:
-            pred_one_hot = torch.argmax(torch.softmax(predictions, dim=1), dim=1, keepdim=True) # [B, N, H, W]
-
+            # pred_one_hot = torch.argmax(torch.softmax(predictions, dim=1), dim=1, keepdim=True) # [B, N, H, W]
+            pred_one_hot = one_hot(predictions.argmax(dim=1), num_classes=self.num_classes) # [B, N, H, W]
         # target_one_hot = torch.cat([1 - targets, targets], dim=1)
         target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
         metric = self.miou_metric(pred_one_hot, target_one_hot) # [B, N, H, W]
