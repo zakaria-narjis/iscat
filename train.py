@@ -13,7 +13,8 @@ from omegaconf import OmegaConf
 from torch.utils.tensorboard import SummaryWriter
 import random
 import numpy as np
-
+from src.visualization import predict, batch_plot_images_with_masks
+import logging
 def load_config(config_path):
     """
     Load configuration file with variable interpolation support using OmegaConf.
@@ -217,7 +218,8 @@ def main(args):
         train_loader, val_loader,
         num_epochs=config['training']['num_epochs']
     )
-
+    all_images, all_pred_masks,all_gt_masks = predict(model, valid_dataset, train_dataset.mean, train_dataset.std, device, images_idicies=[0,1,2,4]) 
+    batch_plot_images_with_masks(all_images, all_pred_masks,all_gt_masks, output_dir=experiment_dir)
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)

@@ -55,7 +55,6 @@ class Trainer:
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=self.config['scheduler']['parameters']['factor'], 
             patience=self.config['scheduler']['parameters']['patience'], 
-            verbose=self.config['scheduler']['parameters']['verbose'],
         )
 
         self.writer = writer
