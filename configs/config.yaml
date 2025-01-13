@@ -3,7 +3,7 @@ seed: 0
 data:
   image_size: 256
   image_indices: 12 # if int it will be mean of chunks of the images, if list it will be the indices [0,100,200]
-  fluo_masks_indices: [0]
+  fluo_masks_indices: [0,1]
   seg_method: "comdet"
   data_type: "Laser"
   normalize: false
@@ -62,7 +62,7 @@ training:
 model:
   type: "UNet"
   in_channels: 3 #not used  
-  num_classes: 2 #not used  
+  num_classes: 3 #not used  
   init_features: 64
   pretrained: false
 
