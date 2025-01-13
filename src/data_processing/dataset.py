@@ -78,7 +78,8 @@ class iScatDataset(Dataset):
         if self.preload_image:
             image = self.images[index_in_images]
         else:
-            image = imread(self.image_paths[index_in_images])
+            image = [imread(frame_path) for frame_path in self.images[index_in_images]]
+            image = np.stack(image, axis=0)  # Shape: (12, H, W)
             image = torch.from_numpy(image).float()
             image = image.to(dtype=torch.float32)         
         mask = self.masks[index_in_images]
