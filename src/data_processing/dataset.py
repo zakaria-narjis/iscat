@@ -49,7 +49,7 @@ class iScatDataset(Dataset):
         self.masks = self.masks.to(dtype=torch.float32)
         self.masks = self.masks.to(self.device)
         if apply_mask_correction:
-            self.masks = Utils.correct_masks(self.masks)
+            self.masks = Utils.shift_segmentation_masks(self.masks)
 
     def augment(self, image, mask):
         if random.random() > 0.5:
