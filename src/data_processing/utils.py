@@ -8,6 +8,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 import torch
 from typing import Union, List, Tuple
+import torch.nn.functional as F
 class Utils:
 
     @staticmethod
