@@ -169,7 +169,8 @@ class Trainer:
         return avg_loss, avg_miou, precision, recall
     
     def train(self, train_loader, val_loader, num_epochs):
-        best_val_miou = 0.0
+        # best_val_miou = 0.0
+        best_val_loss = float('inf')
         no_improve = 0
         self.normalization_mean = train_loader.dataset.mean
         self.normalization_std = train_loader.dataset.std
@@ -187,13 +188,15 @@ class Trainer:
                 self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
                 self.writer.add_scalar('Validation/Precision', val_precisison, epoch)
                 self.writer.add_scalar('Validation/Recall', val_recall, epoch)
-            if val_miou > best_val_miou:
-                best_val_miou = val_miou
+            if val_loss < best_val_loss:
+                # best_val_miou = val_miou
+                best_val_loss = val_loss
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'val_miou': val_miou,
+                    'val_loss': val_loss,
                 }, self.checkpoint_path)
                 no_improve = 0
             else:
