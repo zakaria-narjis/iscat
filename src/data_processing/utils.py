@@ -232,7 +232,7 @@ class Utils:
         """
         num_classes = int(masks.max().item() + 1)  # Assume classes are from 0 to C-1
         class_counts = torch.zeros(num_classes, dtype=torch.float, device=masks.device)
-        flattened_masks = masks.view(-1)
+        flattened_masks = masks.reshape(-1)
         unique, counts = torch.unique(flattened_masks, return_counts=True)     
         for label, count in zip(unique, counts):
             class_counts[int(label)] += count  # Accumulate pixel counts for each class
