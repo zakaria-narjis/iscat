@@ -10,9 +10,8 @@ from tqdm import tqdm
 import os
 from tifffile import imread
 from src.data_processing.utils import Utils
-
 class iScatDataset(Dataset):
-    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,seg_method="comdet",fluo_masks_indices=[0,1,2],device="cpu"):
+    def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,seg_method="comdet",fluo_masks_indices=[0,1,2],device="cpu",apply_mask_correction=True):
         self.image_paths = image_paths
         self.target_paths = target_paths #list of tuple of paths
         self.seg_args = seg_args
@@ -49,7 +48,8 @@ class iScatDataset(Dataset):
         self.masks = torch.from_numpy(self.masks).float()
         self.masks = self.masks.to(dtype=torch.float32)
         self.masks = self.masks.to(self.device)
-        
+        if apply_mask_correction:
+            self.masks = Utils.correct_masks(self.masks)
 
     def augment(self, image, mask):
         if random.random() > 0.5:

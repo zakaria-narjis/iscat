@@ -165,3 +165,4 @@ data/iScat
 best_multiclass_unet_model.pth
 *.nd2
 *.pth
+dataset/2024_11_19

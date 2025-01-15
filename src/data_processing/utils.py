@@ -244,3 +244,40 @@ class Utils:
     def z_score_normalize(images:torch.Tensor,mean:torch.Tensor,std:torch.Tensor, eps: float = 1e-8):
         normalized_images = (images - mean) / (std + eps)
         return normalized_images
+
+    @staticmethod
+    def shift_segmentation_masks(masks, shift_x=1, shift_y=1):
+        """
+        Shift segmentation masks in a batch to the bottom-right by specified pixels.
+
+        Args:
+            masks (torch.Tensor): A tensor of shape (B, H, W) or (B, C, H, W) representing a batch of segmentation masks.
+            shift_x (int): Number of pixels to shift to the right.
+            shift_y (int): Number of pixels to shift down.
+
+        Returns:
+            torch.Tensor: The shifted masks tensor with the same shape as input.
+        """
+        # Ensure shift_x and shift_y are non-negative
+        if shift_x < 0 or shift_y < 0:
+            raise ValueError("shift_x and shift_y must be non-negative.")
+
+        # Determine padding amounts
+        pad_left = shift_x
+        pad_right = 0
+        pad_top = shift_y
+        pad_bottom = 0
+
+        # Check if the input has a channel dimension (B, C, H, W)
+        has_channels = masks.ndim == 4
+
+        if has_channels:
+            # Apply padding and slicing while keeping the batch and channel dimensions
+            padded_masks = F.pad(masks, (pad_left, pad_right, pad_top, pad_bottom), mode='constant', value=0)
+            shifted_masks = padded_masks[:, :, :-shift_y if shift_y > 0 else None, :-shift_x if shift_x > 0 else None]
+        else:
+            # Apply padding and slicing for (B, H, W) shape
+            padded_masks = F.pad(masks, (pad_left, pad_right, pad_top, pad_bottom), mode='constant', value=0)
+            shifted_masks = padded_masks[:, :-shift_y if shift_y > 0 else None, :-shift_x if shift_x > 0 else None]
+
+        return shifted_masks
