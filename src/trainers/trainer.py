@@ -11,7 +11,7 @@ from enum import Enum
 from src.data_processing.utils import Utils
 from tqdm import tqdm
 import logging
-
+from src.metrics import count_matching_particles
 class Trainer:
     def __init__(
         self,
@@ -104,40 +104,86 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
         total_miou = 0.0
+        # Initialize variables for running totals of particle metrics
+        tp_total = fp_total = fn_total = 0
+
         for batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(self.device), masks.to(self.device)
             images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
+            
+            # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
             predictions = self.model(images)
             loss = self.compute_loss(predictions, masks)
             loss.backward()
             self.optimizer.step()
-
+            
+            # Loss and mIoU can stay on GPU if they're simple operations
             total_loss += loss.item()
             total_miou += self.compute_metrics(predictions, masks)
+            
 
-            step = epoch * len(train_loader) + batch_idx
-            if self.writer is not None:
-                self.writer.add_scalar('Train/Loss', loss.item(), step)
-                self.writer.add_scalar('Train/mIoU', total_miou / (batch_idx + 1), step)
+            with torch.no_grad():
+                pred_masks = torch.argmax(predictions, dim=1).cpu().numpy() 
+                gt_masks = masks.cpu().numpy()
+                
+                # Update running totals for the batch
+                tp, fp, fn = count_matching_particles(pred_masks, gt_masks)
+                tp_total += tp
+                fp_total += fp
+                fn_total += fn
 
-        return total_loss / len(train_loader), total_miou / len(train_loader)
+        # Compute final metrics once at the end
+        n_batches = len(train_loader)
+        avg_loss = total_loss / n_batches
+        avg_miou = total_miou / n_batches
+        
+        # Compute precision and recall once at the end
+        precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
+        recall = tp_total / (tp_total + fn_total) if (tp_total + fn_total) > 0 else 0
+
+        return avg_loss, avg_miou, precision, recall
 
     @torch.no_grad()
     def validate(self, val_loader):
         self.model.eval()
         total_loss = 0.0
         total_miou = 0.0
+        # Initialize particle metric counters
+        tp_total = fp_total = fn_total = 0
 
         for images, masks in val_loader:
             images, masks = images.to(self.device), masks.to(self.device)
             images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
+            
+            # Forward pass on GPU
             predictions = self.model(images)
+            
+            # Compute loss and mIoU on GPU
             total_loss += self.compute_loss(predictions, masks).item()
             total_miou += self.compute_metrics(predictions, masks)
+            
+            # Convert predictions and masks to CPU numpy arrays once
+            pred_masks = torch.argmax(predictions, dim=1).cpu().numpy() 
+            gt_masks = masks.cpu().numpy()
+            
+            # Update particle metric counters
+            tp, fp, fn = count_matching_particles(pred_masks, gt_masks)
+            tp_total += tp
+            fp_total += fp
+            fn_total += fn
 
-        return total_loss / len(val_loader), total_miou / len(val_loader)
+        # Compute final metrics once
+        n_batches = len(val_loader)
+        avg_loss = total_loss / n_batches
+        avg_miou = total_miou / n_batches
+        
+        # Compute precision and recall once at the end
+        precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
+        recall = tp_total / (tp_total + fn_total) if (tp_total + fn_total) > 0 else 0
 
+        return avg_loss, avg_miou, precision, recall
+    
     def train(self, train_loader, val_loader, num_epochs):
         best_val_miou = 0.0
         no_improve = 0
@@ -145,14 +191,18 @@ class Trainer:
         self.normalization_std = train_loader.dataset.std
 
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
-            train_loss, train_miou = self.train_epoch(train_loader, epoch)
-            val_loss, val_miou = self.validate(val_loader)
+            train_loss, train_miou,train_precisison,train_recall = self.train_epoch(train_loader, epoch)
+            val_loss, val_miou ,val_precisison,val_recall = self.validate(val_loader)
 
             self.scheduler.step(val_loss)
             if self.writer is not None:
+                self.writer.add_scalar('Train/Loss', train_loss, epoch)
+                self.writer.add_scalar('Train/mIoU', train_miou, epoch)
                 self.writer.add_scalar('Validation/Loss', val_loss, epoch)
                 self.writer.add_scalar('Validation/mIoU', val_miou, epoch)
-
+                self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
+                self.writer.add_scalar('Validation/Precision', val_precisison, epoch)
+                self.writer.add_scalar('Validation/Recall', val_recall, epoch)
             if val_miou > best_val_miou:
                 best_val_miou = val_miou
                 torch.save({
@@ -166,6 +216,7 @@ class Trainer:
                 no_improve += 1
 
             self.logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}, LR: {self.optimizer.param_groups[0]['lr']:.2e}")
+            self.logger.info(f"Train Precision: {train_precisison:.4f}, Train Recall: {train_recall:.4f}, Val Precision: {val_precisison:.4f}, Val Recall: {val_recall:.4f}")          
             if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break
