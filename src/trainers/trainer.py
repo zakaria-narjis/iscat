@@ -104,8 +104,6 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
         total_miou = 0.0
-        # Initialize variables for running totals of particle metrics
-        tp_total = fp_total = fn_total = 0
 
         for batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(self.device), masks.to(self.device)
@@ -123,26 +121,12 @@ class Trainer:
             total_miou += self.compute_metrics(predictions, masks)
             
 
-            with torch.no_grad():
-                pred_masks = torch.argmax(predictions, dim=1).cpu().numpy() 
-                gt_masks = masks.cpu().numpy()
-                
-                # Update running totals for the batch
-                tp, fp, fn = count_matching_particles(pred_masks, gt_masks)
-                tp_total += tp
-                fp_total += fp
-                fn_total += fn
-
         # Compute final metrics once at the end
         n_batches = len(train_loader)
         avg_loss = total_loss / n_batches
         avg_miou = total_miou / n_batches
-        
-        # Compute precision and recall once at the end
-        precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
-        recall = tp_total / (tp_total + fn_total) if (tp_total + fn_total) > 0 else 0
 
-        return avg_loss, avg_miou, precision, recall
+        return avg_loss, avg_miou
 
     @torch.no_grad()
     def validate(self, val_loader):
@@ -191,7 +175,7 @@ class Trainer:
         self.normalization_std = train_loader.dataset.std
 
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
-            train_loss, train_miou,train_precisison,train_recall = self.train_epoch(train_loader, epoch)
+            train_loss, train_miou = self.train_epoch(train_loader, epoch)
             val_loss, val_miou ,val_precisison,val_recall = self.validate(val_loader)
 
             self.scheduler.step(val_loss)
@@ -216,7 +200,7 @@ class Trainer:
                 no_improve += 1
 
             self.logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}, LR: {self.optimizer.param_groups[0]['lr']:.2e}")
-            self.logger.info(f"Train Precision: {train_precisison:.4f}, Train Recall: {train_recall:.4f}, Val Precision: {val_precisison:.4f}, Val Recall: {val_recall:.4f}")          
+            self.logger.info(f"Val Precision: {val_precisison:.4f}, Val Recall: {val_recall:.4f}")          
             if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break
