@@ -193,8 +193,8 @@ class Trainer:
         # Compute total precision and recall
         total_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
         total_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-        
-        return avg_loss, avg_miou, total_precision, total_recall, class_precision_recall
+        total_accuracy = total_tp / (total_tp + total_fp + total_fn) if (total_tp + total_fp + total_fn) > 0 else 0
+        return avg_loss, avg_miou, total_precision, total_recall, total_accuracy, class_precision_recall
 
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float('inf')
@@ -204,7 +204,7 @@ class Trainer:
         
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             train_loss, train_miou = self.train_epoch(train_loader, epoch)
-            val_loss, val_miou, val_precision, val_recall, class_metrics = self.validate(val_loader)
+            val_loss, val_miou, val_precision, val_recall, total_accuracy, class_metrics = self.validate(val_loader)
             
             self.scheduler.step(val_loss)
             
@@ -217,6 +217,7 @@ class Trainer:
                 self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
                 
                 # Log total precision and recall
+                self.writer.add_scalar('Validation/Total_Accuracy', total_accuracy, epoch)
                 self.writer.add_scalar('Validation/Total_Precision', val_precision, epoch)
                 self.writer.add_scalar('Validation/Total_Recall', val_recall, epoch)
                 
@@ -248,8 +249,9 @@ class Trainer:
                             f"Val mIoU: {val_miou:.4f}, "
                             f"LR: {self.optimizer.param_groups[0]['lr']:.2e}")
             
-            self.logger.info(f"Total - Val Precision: {val_precision:.4f}, "
-                            f"Val Recall: {val_recall:.4f}")
+            self.logger.info(f"Total Accuracy: {total_accuracy:.4f}, "
+                            f"Total Precision: {val_precision:.4f}, "
+                            f"Total Recall: {val_recall:.4f}")
             
             for class_id, metrics in class_metrics.items():
                 self.logger.info(f"Class {class_id} - "
