@@ -257,9 +257,10 @@ class Trainer:
                             f"Total Recall: {val_recall:.4f}")
             
             for class_id, metrics in class_metrics.items():
-                self.logger.info(f"Class {class_id} - "
-                            f"Precision: {metrics['precision']:.4f}, "
-                            f"Recall: {metrics['recall']:.4f}")
+                self.logger.info(f"Class {class_id}: "
+                                f"Precision: {metrics['precision']:.4f}, "
+                                f"Recall: {metrics['recall']:.4f}, "
+                                f"Accuracy: {metrics['accuracy']:.4f}")
             
             if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
