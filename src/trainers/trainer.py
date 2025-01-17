@@ -11,7 +11,7 @@ from enum import Enum
 from src.data_processing.utils import Utils
 from tqdm import tqdm
 import logging
-from src.metrics import count_matching_particles
+from src.metrics import count_matching_particles,batch_multiclass_metrics
 class Trainer:
     def __init__(
         self,
@@ -128,82 +128,134 @@ class Trainer:
 
         return avg_loss, avg_miou
 
-    @torch.no_grad()
-    def validate(self, val_loader):
-        self.model.eval()
-        total_loss = 0.0
-        total_miou = 0.0
-        # Initialize particle metric counters
-        tp_total = fp_total = fn_total = 0
-
-        for images, masks in val_loader:
-            images, masks = images.to(self.device), masks.to(self.device)
-            images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
-            
-            # Forward pass on GPU
-            predictions = self.model(images)
-            
-            # Compute loss and mIoU on GPU
-            total_loss += self.compute_loss(predictions, masks).item()
-            total_miou += self.compute_metrics(predictions, masks)
-            
-            # Convert predictions and masks to CPU numpy arrays once
-            pred_masks = torch.argmax(predictions, dim=1).cpu().numpy() 
-            gt_masks = masks.cpu().numpy()
-            
-            # Update particle metric counters
-            tp, fp, fn = count_matching_particles(pred_masks, gt_masks)
-            tp_total += tp
-            fp_total += fp
-            fn_total += fn
-
-        # Compute final metrics once
-        n_batches = len(val_loader)
-        avg_loss = total_loss / n_batches
-        avg_miou = total_miou / n_batches
-        
-        # Compute precision and recall once at the end
-        precision = tp_total / (tp_total + fp_total) if (tp_total + fp_total) > 0 else 0
-        recall = tp_total / (tp_total + fn_total) if (tp_total + fn_total) > 0 else 0
-
-        return avg_loss, avg_miou, precision, recall
+@torch.no_grad()
+def validate(self, val_loader):
+    self.model.eval()
+    total_loss = 0.0
+    total_miou = 0.0
     
-    def train(self, train_loader, val_loader, num_epochs):
-        # best_val_miou = 0.0
-        best_val_loss = float('inf')
-        no_improve = 0
-        self.normalization_mean = train_loader.dataset.mean
-        self.normalization_std = train_loader.dataset.std
+    # Initialize dictionaries for class-specific metrics
+    class_metrics = {}
+    # Initialize total particle metric counters
+    total_tp = total_fp = total_fn = 0
+    
+    for images, masks in val_loader:
+        images, masks = images.to(self.device), masks.to(self.device)
+        images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
+        
+        # Forward pass on GPU
+        predictions = self.model(images)
+        
+        # Compute loss and mIoU on GPU
+        total_loss += self.compute_loss(predictions, masks).item()
+        total_miou += self.compute_metrics(predictions, masks)
+        
+        # Convert predictions and masks to CPU numpy arrays
+        pred_masks = torch.argmax(predictions, dim=1).cpu().numpy()
+        gt_masks = masks.cpu().numpy()
+        
+        # Process entire batch at once
+        batch_metrics = batch_multiclass_metrics(pred_masks, gt_masks)
+        
+        # Update metrics for each class
+        for class_id, (tp, fp, fn) in batch_metrics.items():
+            if class_id not in class_metrics:
+                class_metrics[class_id] = {'tp': 0, 'fp': 0, 'fn': 0}
+            class_metrics[class_id]['tp'] += tp
+            class_metrics[class_id]['fp'] += fp
+            class_metrics[class_id]['fn'] += fn
+            
+            # Update total counters
+            total_tp += tp
+            total_fp += fp
+            total_fn += fn
+    
+    # Compute final metrics
+    n_batches = len(val_loader)
+    avg_loss = total_loss / n_batches
+    avg_miou = total_miou / n_batches
+    
+    # Compute class-specific precision and recall
+    class_precision_recall = {}
+    for class_id, metrics in class_metrics.items():
+        tp = metrics['tp']
+        fp = metrics['fp']
+        fn = metrics['fn']
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        
+        class_precision_recall[class_id] = {
+            'precision': precision,
+            'recall': recall
+        }
+    
+    # Compute total precision and recall
+    total_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
+    total_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
+    
+    return avg_loss, avg_miou, total_precision, total_recall, class_precision_recall
 
-        for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
-            train_loss, train_miou = self.train_epoch(train_loader, epoch)
-            val_loss, val_miou ,val_precisison,val_recall = self.validate(val_loader)
-
-            self.scheduler.step(val_loss)
-            if self.writer is not None:
-                self.writer.add_scalar('Train/Loss', train_loss, epoch)
-                self.writer.add_scalar('Train/mIoU', train_miou, epoch)
-                self.writer.add_scalar('Validation/Loss', val_loss, epoch)
-                self.writer.add_scalar('Validation/mIoU', val_miou, epoch)
-                self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
-                self.writer.add_scalar('Validation/Precision', val_precisison, epoch)
-                self.writer.add_scalar('Validation/Recall', val_recall, epoch)
-            if val_loss < best_val_loss:
-                # best_val_miou = val_miou
-                best_val_loss = val_loss
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'val_miou': val_miou,
-                    'val_loss': val_loss,
-                }, self.checkpoint_path)
-                no_improve = 0
-            else:
-                no_improve += 1
-
-            self.logger.info(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}, LR: {self.optimizer.param_groups[0]['lr']:.2e}")
-            self.logger.info(f"Val Precision: {val_precisison:.4f}, Val Recall: {val_recall:.4f}")          
-            if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
-                self.logger.info(f"Early stopping at epoch {epoch+1}")
-                break
+def train(self, train_loader, val_loader, num_epochs):
+    best_val_loss = float('inf')
+    no_improve = 0
+    self.normalization_mean = train_loader.dataset.mean
+    self.normalization_std = train_loader.dataset.std
+    
+    for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
+        train_loss, train_miou = self.train_epoch(train_loader, epoch)
+        val_loss, val_miou, val_precision, val_recall, class_metrics = self.validate(val_loader)
+        
+        self.scheduler.step(val_loss)
+        
+        if self.writer is not None:
+            # Log general metrics
+            self.writer.add_scalar('Train/Loss', train_loss, epoch)
+            self.writer.add_scalar('Train/mIoU', train_miou, epoch)
+            self.writer.add_scalar('Validation/Loss', val_loss, epoch)
+            self.writer.add_scalar('Validation/mIoU', val_miou, epoch)
+            self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
+            
+            # Log total precision and recall
+            self.writer.add_scalar('Validation/Total_Precision', val_precision, epoch)
+            self.writer.add_scalar('Validation/Total_Recall', val_recall, epoch)
+            
+            # Log class-specific metrics
+            for class_id, metrics in class_metrics.items():
+                self.writer.add_scalar(f'Validation/Class_{class_id}_Precision', 
+                                     metrics['precision'], epoch)
+                self.writer.add_scalar(f'Validation/Class_{class_id}_Recall', 
+                                     metrics['recall'], epoch)
+        
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'val_miou': val_miou,
+                'val_loss': val_loss,
+            }, self.checkpoint_path)
+            no_improve = 0
+        else:
+            no_improve += 1
+        
+        # Log metrics for each class
+        self.logger.info(f"Epoch {epoch+1}/{num_epochs}, "
+                        f"Train Loss: {train_loss:.4f}, "
+                        f"Train mIoU: {train_miou:.4f}, "
+                        f"Val Loss: {val_loss:.4f}, "
+                        f"Val mIoU: {val_miou:.4f}, "
+                        f"LR: {self.optimizer.param_groups[0]['lr']:.2e}")
+        
+        self.logger.info(f"Total - Val Precision: {val_precision:.4f}, "
+                        f"Val Recall: {val_recall:.4f}")
+        
+        for class_id, metrics in class_metrics.items():
+            self.logger.info(f"Class {class_id} - "
+                           f"Precision: {metrics['precision']:.4f}, "
+                           f"Recall: {metrics['recall']:.4f}")
+        
+        if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
+            self.logger.info(f"Early stopping at epoch {epoch+1}")
+            break
