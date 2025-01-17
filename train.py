@@ -192,6 +192,7 @@ def main(args):
     else:
         raise ValueError("Invalid image_indices type")
     num_classes = len(config['data']['train_dataset']['fluo_masks_indices']) + 1 
+    config['training']['num_classes'] = num_classes
     model = UNet(
         in_channels=input_channels,
         num_classes=num_classes,

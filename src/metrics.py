@@ -43,79 +43,90 @@ def count_matching_particles(pred_mask: np.ndarray,
     
     return tp, fp, fn
 
-def compute_batch_metrics(total_tp: int, total_fp: int, total_fn: int) -> Dict[str, float]:
+def count_matching_particles_multiclass(
+    pred_mask: np.ndarray,
+    gt_mask: np.ndarray
+) -> Dict[int, Tuple[int, int, int]]:
     """
-    Compute precision, recall and F1 score at batch level.
+    Count matching particles between prediction and ground truth masks for multiple classes.
     
     Args:
-        total_tp: Total true positives across batch
-        total_fp: Total false positives across batch
-        total_fn: Total false negatives across batch
+        pred_mask: Multi-class prediction mask (0 for background, 1+ for different particle classes)
+        gt_mask: Multi-class ground truth mask (0 for background, 1+ for different particle classes)
         
     Returns:
-        Dictionary containing precision, recall and F1 score
+        Dictionary mapping class_id to tuple of (true_positives, false_positives, false_negatives)
     """
-    precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
-    recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    # Get unique classes (excluding background class 0)
+    classes = sorted(set(np.unique(pred_mask)) | set(np.unique(gt_mask)))
+    classes = [c for c in classes if c != 0]
     
-    return {
-        'precision': precision,
-        'recall': recall,
-        'f1_score': f1
-    }
+    results = {}
+    
+    # Process each class separately
+    for class_id in classes:
+        # Create binary masks for current class
+        pred_binary = (pred_mask == class_id).astype(np.int32)
+        gt_binary = (gt_mask == class_id).astype(np.int32)
+        
+        # Label connected components
+        pred_labeled, num_pred = label(pred_binary)
+        gt_labeled, num_gt = label(gt_binary)
+        
+        # Initialize counters
+        tp = 0
+        matched_pred_labels = set()
+        matched_gt_labels = set()
+        
+        # For each predicted particle of current class
+        for pred_label in range(1, num_pred + 1):
+            pred_particle = pred_labeled == pred_label
+            
+            # Find any overlap with GT particles
+            overlapping_gt_labels = set(gt_labeled[pred_particle]) - {0}
+            
+            if overlapping_gt_labels:
+                # If there's any overlap, count as TP
+                tp += 1
+                matched_pred_labels.add(pred_label)
+                matched_gt_labels.update(overlapping_gt_labels)
+        
+        # Count unmatched predictions as FP and unmatched GT as FN
+        fp = num_pred - len(matched_pred_labels)
+        fn = num_gt - len(matched_gt_labels)
+        
+        results[class_id] = (tp, fp, fn)
+    
+    return results
 
-def compute_per_sample_metrics(pred_masks: np.ndarray, 
-                             gt_masks: np.ndarray) -> Tuple[Dict[str, float], Dict[str, np.ndarray]]:
+def batch_multiclass_metrics(
+    pred_masks: np.ndarray,
+    gt_masks: np.ndarray
+) -> Dict[int, Tuple[int, int, int]]:
     """
-    Compute both batch-level metrics and per-sample metrics.
+    Process a batch of masks and aggregate the results.
     
     Args:
-        pred_masks: Predicted masks (batch_size, height, width)
-        gt_masks: Ground truth masks (batch_size, height, width)
+        pred_masks: Batch of prediction masks [batch_size, height, width]
+        gt_masks: Batch of ground truth masks [batch_size, height, width]
         
     Returns:
-        Tuple of (batch_metrics, per_sample_metrics)
+        Dictionary mapping class_id to aggregated (tp, fp, fn) across the batch
     """
-    # Initialize arrays for per-sample metrics
-    batch_size = len(pred_masks)
-    per_sample_precision = np.zeros(batch_size)
-    per_sample_recall = np.zeros(batch_size)
-    per_sample_f1 = np.zeros(batch_size)
+    # Initialize results dictionary
+    batch_results = {}
     
-    # Track batch totals
-    total_tp = total_fp = total_fn = 0
-    
-    # Compute metrics for each sample
-    for i, (pred, gt) in enumerate(zip(pred_masks, gt_masks)):
-        # Get counts for this sample
-        tp, fp, fn = count_matching_particles(pred, gt)
+    # Process each image in the batch
+    for pred_mask, gt_mask in zip(pred_masks, gt_masks):
+        image_results = count_matching_particles_multiclass(pred_mask, gt_mask)
         
-        # Update batch totals
-        total_tp += tp
-        total_fp += fp
-        total_fn += fn
-        
-        # Compute per-sample metrics
-        if tp + fp > 0:
-            per_sample_precision[i] = tp / (tp + fp)
-        if tp + fn > 0:
-            per_sample_recall[i] = tp / (tp + fn)
-        if per_sample_precision[i] + per_sample_recall[i] > 0:
-            per_sample_f1[i] = 2 * (per_sample_precision[i] * per_sample_recall[i]) / \
-                              (per_sample_precision[i] + per_sample_recall[i])
+        # Aggregate results for each class
+        for class_id, (tp, fp, fn) in image_results.items():
+            if class_id not in batch_results:
+                batch_results[class_id] = [0, 0, 0]
+            batch_results[class_id][0] += tp
+            batch_results[class_id][1] += fp
+            batch_results[class_id][2] += fn
     
-    # Compute batch-level metrics
-    batch_metrics = compute_batch_metrics(total_tp, total_fp, total_fn)
-    
-    # Compute means of per-sample metrics
-    per_sample_metrics = {
-        'precision': per_sample_precision,
-        'recall': per_sample_recall,
-        'f1_score': per_sample_f1,
-        'mean_precision': np.mean(per_sample_precision),
-        'mean_recall': np.mean(per_sample_recall),
-        'mean_f1': np.mean(per_sample_f1)
-    }
-    
-    return batch_metrics, per_sample_metrics
+    # Convert lists to tuples in final results
+    return {k: tuple(v) for k, v in batch_results.items()}
