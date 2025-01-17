@@ -184,10 +184,11 @@ class Trainer:
             
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            
+            accuracy = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else 0
             class_precision_recall[class_id] = {
                 'precision': precision,
-                'recall': recall
+                'recall': recall,
+                'accuracy': accuracy
             }
         
         # Compute total precision and recall
@@ -227,6 +228,8 @@ class Trainer:
                                         metrics['precision'], epoch)
                     self.writer.add_scalar(f'Validation/Class_{class_id}_Recall', 
                                         metrics['recall'], epoch)
+                    self.writer.add_scalar(f'Validation/Class_{class_id}_Accuracy', 
+                                        metrics['accuracy'], epoch)
             
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
