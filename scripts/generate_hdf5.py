@@ -145,8 +145,8 @@ if __name__=="__main__":
     parser.add_argument("--patch_size", type=int, nargs=2, default=(256, 256), help="Patch size (height, width). Default is 256x256.")
     parser.add_argument("--overlap", type=int, default=0, help="Overlap between patches in pixels. Default is 0.")
     args = parser.parse_args()
-    data_path_1 = os.path.join('..','dataset', '2024_11_11', 'Metasurface', 'Chip_02')
-    data_path_2 = os.path.join('..','dataset', '2024_11_12', 'Metasurface', 'Chip_01')
+    data_path_1 = os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02')
+    data_path_2 = os.path.join('data', '2024_11_12', 'Metasurface', 'Chip_01')
     nd2_paths = []
     for data_path in [data_path_1,data_path_2]:
         nd2_paths.extend(
