@@ -188,7 +188,7 @@ def main(args):
         pretrained=config['model']['pretrained']
     )
     if config['training']['class_weights']['use']:
-        class_weights=Utils.calculate_class_weights_from_masks(train_dataset.masks).to(device)
+        class_weights=Utils.calculate_class_weights_from_masks(Utils.load_masks_from_hdf5(hdf5_path)).to(device)
     else:
         class_weights=None
     # Initialize trainer
@@ -207,7 +207,7 @@ def main(args):
         train_loader, val_loader,
         num_epochs=config['training']['num_epochs']
     )
-    all_images, all_pred_masks,all_gt_masks = predict(model, valid_dataset, train_dataset.mean, train_dataset.std, device, images_idicies=[0,1,2,4]) 
+    all_images, all_pred_masks,all_gt_masks = predict(model=model, dataset=valid_dataset, mean=None ,std=None, device=device, images_idicies=[0,1,2,4]) 
     batch_plot_images_with_masks(all_images, all_pred_masks,all_gt_masks, output_dir=experiment_dir)
 if __name__ == "__main__":
     args = get_args_parser().parse_args()

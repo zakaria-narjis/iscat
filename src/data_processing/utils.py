@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 import torch
 from typing import Union, List, Tuple
 import torch.nn.functional as F
+import h5py
 class Utils:
 
     @staticmethod
@@ -282,3 +283,27 @@ class Utils:
             shifted_masks = padded_masks[:, :-shift_y if shift_y > 0 else None, :-shift_x if shift_x > 0 else None]
 
         return shifted_masks
+
+    @staticmethod
+    def load_masks_from_hdf5(hdf5_path, indices=None):
+        """
+        Load mask patches from an HDF5 file.
+
+        Args:
+            hdf5_path (str): Path to the HDF5 file.
+            indices (list or None): Optional list of indices to load specific masks.
+                                    If None, all masks are loaded.
+
+        Returns:
+            np.ndarray: Loaded mask patches (subset if indices are specified).
+        """
+        with h5py.File(hdf5_path, "r") as f:
+            mask_patches = f["mask_patches"]
+            
+            # If indices are provided, select only those masks
+            if indices is not None:
+                masks = mask_patches[indices]
+            else:
+                masks = mask_patches[:]
+        
+        return masks

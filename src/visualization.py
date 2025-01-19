@@ -94,7 +94,7 @@ def batch_plot_images_with_masks(images, predicted_masks, ground_truth_masks, ou
         output_path = f"{output_dir}/image_{idx}.png"
         plot_image_with_masks(image[0], predicted_mask, ground_truth_mask, output_path)
 
-def predict(model, dataset, mean, std, device, images_idicies=[0,1,2,4]):
+def predict(model, dataset, mean=None, std=None, device='cpu', images_idicies=[0,1,2,4]):
     model.eval()
     all_pred_masks = []
     all_gt_masks = []
@@ -105,7 +105,8 @@ def predict(model, dataset, mean, std, device, images_idicies=[0,1,2,4]):
             if 1 in mask:
                 break
         input_image = image.to(device).unsqueeze(0) # torch.Size([1, 3, 224, 224])
-        input_image = Utils.z_score_normalize(input_image, mean, std)
+        if mean is not None and std is not None:
+            input_image = Utils.z_score_normalize(input_image, mean, std)
         ground_truth_mask = mask.cpu().numpy()  # Shape: (224, 224)
 
         with torch.no_grad():

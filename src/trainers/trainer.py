@@ -188,18 +188,18 @@ class Trainer:
             
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            accuracy = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
             class_precision_recall[class_id] = {
                 'precision': precision,
                 'recall': recall,
-                'accuracy': accuracy
+                'f1': f1,
             }
         
         # Compute total precision and recall
         total_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
         total_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-        total_accuracy = total_tp / (total_tp + total_fp + total_fn) if (total_tp + total_fp + total_fn) > 0 else 0
-        return avg_loss, avg_miou, total_precision, total_recall, total_accuracy, class_precision_recall
+        total_f1 = 2 * (total_precision * total_recall) / (total_precision + total_recall) if (total_precision + total_recall) > 0 else 0
+        return avg_loss, avg_miou, total_precision, total_recall, total_f1, class_precision_recall
 
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float('inf')
@@ -210,7 +210,7 @@ class Trainer:
         
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             train_loss, train_miou = self.train_epoch(train_loader, epoch)
-            val_loss, val_miou, val_precision, val_recall, total_accuracy, class_metrics = self.validate(val_loader)
+            val_loss, val_miou, val_precision, val_recall, val_f1, class_metrics = self.validate(val_loader)
             
             self.scheduler.step(val_loss)
             
@@ -223,7 +223,7 @@ class Trainer:
                 self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
                 
                 # Log total precision and recall
-                self.writer.add_scalar('Validation/Total_Accuracy', total_accuracy, epoch)
+                self.writer.add_scalar('Validation/Total_F1', val_f1, epoch)
                 self.writer.add_scalar('Validation/Total_Precision', val_precision, epoch)
                 self.writer.add_scalar('Validation/Total_Recall', val_recall, epoch)
                 
@@ -233,8 +233,8 @@ class Trainer:
                                         metrics['precision'], epoch)
                     self.writer.add_scalar(f'Validation/Class_{class_id}_Recall', 
                                         metrics['recall'], epoch)
-                    self.writer.add_scalar(f'Validation/Class_{class_id}_Accuracy', 
-                                        metrics['accuracy'], epoch)
+                    self.writer.add_scalar(f'Validation/Class_{class_id}_F1', 
+                                        metrics['f1'], epoch)
             
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -257,7 +257,7 @@ class Trainer:
                             f"Val mIoU: {val_miou:.4f}, "
                             f"LR: {self.optimizer.param_groups[0]['lr']:.2e}")
             
-            self.logger.info(f"Total Accuracy: {total_accuracy:.4f}, "
+            self.logger.info(f"Total F1: {val_f1:.4f}, "
                             f"Total Precision: {val_precision:.4f}, "
                             f"Total Recall: {val_recall:.4f}")
             
@@ -265,7 +265,7 @@ class Trainer:
                 self.logger.info(f"Class {class_id}: "
                                 f"Precision: {metrics['precision']:.4f}, "
                                 f"Recall: {metrics['recall']:.4f}, "
-                                f"Accuracy: {metrics['accuracy']:.4f}")
+                                f"F1: {metrics['f1']:.4f}")
             
             if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
