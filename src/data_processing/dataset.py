@@ -166,5 +166,10 @@ class iScatDataset2(Dataset):
                 image = TF.vflip(image)
                 mask = TF.vflip(mask)
 
+            # Random rotation of 90° or -90°
+            if random.random() > 0.5:
+                angle = random.choice([90, -90])
+                image = TF.rotate(image, angle)
+                mask = TF.rotate(mask, angle)        
         # Ensure the returned tensors have the right shapes
         return image, mask
