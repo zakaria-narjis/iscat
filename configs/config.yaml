@@ -42,7 +42,7 @@ training:
   loss_type: "dice" # Options: crossentropy, dice, combined
   num_classes: ${model.num_classes}
   class_weights:
-    use: true
+    use: false
     calculation_method: "from_masks"
   optimizer:
     type: "Adam"
