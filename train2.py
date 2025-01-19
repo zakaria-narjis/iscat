@@ -179,17 +179,10 @@ def main(args):
         train_dataset, valid_dataset, batch_size=config['training']['batch_size']
     )
 
-    # Initialize model
-    if type(config['data']['image_indices'])==int:
-        input_channels = config['data']['image_indices']
-    elif type(config['data']['image_indices'])==list:
-        input_channels = len(config['data']['image_indices'])
-    else:
-        raise ValueError("Invalid image_indices type")
     num_classes = len(config['data']['train_dataset']['fluo_masks_indices']) + 1 
     config['training']['num_classes'] = num_classes
     model = UNet(
-        in_channels=input_channels,
+        in_channels=201,
         num_classes=num_classes,
         init_features=config['model']['init_features'],
         pretrained=config['model']['pretrained']
