@@ -20,6 +20,7 @@ class Trainer:
         config: dict,
         experiment_dir: str,
         class_weights=None,
+        normalize: bool = True,
         writer: SummaryWriter = None,
         verbose: bool = True
     ):
@@ -40,7 +41,9 @@ class Trainer:
         self.class_weights = class_weights
         self.config = config
         self.earlystoping_patience = config['early_stopping']['patience']
-
+        self.normalization_mean = None
+        self.normalization_std = None
+        self.normalize = normalize
         # Configure logging
         self.logger = logging.getLogger(__name__)
         log_level = logging.DEBUG if verbose else logging.WARNING
@@ -141,8 +144,8 @@ class Trainer:
         
         for images, masks in val_loader:
             images, masks = images.to(self.device), masks.to(self.device)
-            images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
-            
+            if self.normalize:
+                images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
             # Forward pass on GPU
             predictions = self.model(images)
             
@@ -200,8 +203,9 @@ class Trainer:
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float('inf')
         no_improve = 0
-        self.normalization_mean = train_loader.dataset.mean
-        self.normalization_std = train_loader.dataset.std
+        if self.normalize: 
+            self.normalization_mean = train_loader.dataset.mean
+            self.normalization_std = train_loader.dataset.std
         
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             train_loss, train_miou = self.train_epoch(train_loader, epoch)

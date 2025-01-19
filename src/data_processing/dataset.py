@@ -3,7 +3,6 @@ from torchvision.transforms.v2 import functional as TF
 import random
 from torch.utils.data import Dataset
 import nd2
-
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -96,42 +95,48 @@ class iScatDataset(Dataset):
         length = len(self.image_paths)*self.duplication_factor
         return length
 class iScatDataset2(Dataset):
-    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax"):
+    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None):
         """
         PyTorch Dataset for microscopy data stored in an HDF5 file.
-        
+
         Args:
             hdf5_path (str): Path to the HDF5 file.
             classes (list): Classes to include in the mask.
             apply_augmentation (bool): Whether to apply random flips.
             normalize (str): Normalization method, either 'minmax' or 'zscore'.
+            indices (list): Optional list of indices to subset the dataset.
         """
         self.hdf5_path = hdf5_path
         self.classes = classes
         self.apply_augmentation = apply_augmentation
         self.normalize = normalize
-        
+
         # Open HDF5 file and get dataset sizes
         with h5py.File(hdf5_path, "r") as f:
             self.image_dataset_size = f["image_patches"].shape[0]
-            self.num_slices = f["image_patches"].shape[1]
+
+        # If indices are provided, filter dataset length
+        self.indices = indices if indices is not None else range(self.image_dataset_size)
 
     def __len__(self):
-        return self.image_dataset_size
+        return len(self.indices)
 
     def __getitem__(self, idx):
+        # Map the input index to the subset index
+        idx = self.indices[idx]
+
         # Load the data from HDF5
         with h5py.File(self.hdf5_path, "r") as f:
             image = f["image_patches"][idx].copy()  # Shape: (Z, H, W)
             masks = f["mask_patches"][idx].copy()   # Shape: (C, H, W)
 
         # Convert to float32
-        image = image.astype(np.float32)
-        
+        image = torch.from_numpy(image.astype(np.float32))  # Convert image to tensor
+        masks = torch.from_numpy(masks.astype(np.uint8))    # Convert masks to tensor
+
         # Normalize the image
         if self.normalize == "minmax":
-            image -= image.min()
-            image /= (image.max() + 1e-8)
+            image = (image - image.min()) / (image.max() - image.min() + 1e-8)
         elif self.normalize == "zscore":
             mean = image.mean()
             std = image.std() + 1e-8
@@ -145,22 +150,21 @@ class iScatDataset2(Dataset):
             mask = masks[self.classes[0]]
         else:
             # Multi-class mask
-            mask = np.zeros_like(masks[0], dtype=np.uint8)
+            mask = torch.zeros_like(masks[0], dtype=torch.uint8)
             for i, cls in enumerate(self.classes, start=1):
                 mask[masks[cls] > 0] = i  # Assign class indices
 
-        # Apply augmentation (random horizontal/vertical flips)
+        # Apply augmentation using torchvision.transforms.functional
         if self.apply_augmentation:
-            # Create new arrays after flipping to ensure contiguous memory
+            # Random horizontal flipping
             if random.random() > 0.5:
-                image = np.ascontiguousarray(np.flip(image, axis=-1))  # Horizontal flip
-                mask = np.ascontiguousarray(np.flip(mask, axis=-1))
+                image = TF.hflip(image)
+                mask = TF.hflip(mask)
+
+            # Random vertical flipping
             if random.random() > 0.5:
-                image = np.ascontiguousarray(np.flip(image, axis=-2))  # Vertical flip
-                mask = np.ascontiguousarray(np.flip(mask, axis=-2))
+                image = TF.vflip(image)
+                mask = TF.vflip(mask)
 
-        # Convert to PyTorch tensors
-        image = torch.from_numpy(image)  # Shape: (Z, H, W)
-        mask = torch.from_numpy(mask)    # Shape: (H, W)
-
+        # Ensure the returned tensors have the right shapes
         return image, mask
