@@ -110,7 +110,8 @@ class Trainer:
 
         for batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(self.device), masks.to(self.device)
-            images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
+            if self.normalize:
+                images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
             
             # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
