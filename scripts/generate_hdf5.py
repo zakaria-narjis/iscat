@@ -1,5 +1,11 @@
 """
 This script is used to generate the hdf5 file for the dataset. The dataset is structured as follows:
+- Each HDF5 file contains two datasets: image_patches and mask_patches.
+- The image_patches dataset contains image patches extracted from ND2 files.
+- The mask_patches dataset contains mask patches extracted from corresponding mask files.
+- The image_patches dataset has shape (N, Z, H, W), where N is the number of patches, Z is the number of slices in the ND2 file, and H, W are the patch dimensions.
+- The mask_patches dataset has shape (N, C, H, W), where N is the number of patches, C is the number of masks, and H, W are the patch dimensions.
+- The script assumes that the mask files are named "Captured Cy5_mask.npy", "Captured FITC_mask.npy", and "Captured TRITC_mask.npy" and are located in the same directory as the ND2 files.
 
 """
 import os
