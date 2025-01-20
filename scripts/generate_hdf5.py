@@ -72,7 +72,7 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
     # Mapping for the 2024_11_29 case
     rename_mapping = {
         "Captured Cy5_mask.npy": "Captured FITC_mask.npy",
-        "Captured FITC_mask.npy": "Captured RITC_mask.npy",
+        "Captured FITC_mask.npy": "Captured TRITC_mask.npy",
         "Captured TRITC_mask.npy": "Captured Cy5_mask.npy",
     }
 
