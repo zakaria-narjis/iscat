@@ -197,27 +197,6 @@ class Utils:
         plt.axis('off')
         plt.show()
     
-    # @staticmethod
-    # def calculate_class_weights_from_masks(masks: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     Calculate class weights for a binary segmentation task based on the provided masks.
-    #     """
-    #     class_counts = torch.zeros(2, dtype=torch.float)
-
-    #     flattened_masks = masks.view(-1)  # Combine N, H, W into a single dimension
-
-    #     unique, counts = torch.unique(flattened_masks.cpu(), return_counts=True)
-
-    #     for label, count in zip(unique, counts):
-    #         label = int(label)  # Ensure label is an integer
-    #         class_counts[label] += count
-
-    #     total_pixels = class_counts.sum()
-    #     class_weights = total_pixels / (2 * class_counts)  # 2 is number of classes
-
-    #     class_weights = class_weights / class_weights.sum()
-        
-    #     return class_weights
     
     @staticmethod
     def calculate_class_weights_from_masks(masks: torch.Tensor) -> torch.Tensor:

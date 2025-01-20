@@ -60,7 +60,11 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
         "Captured FITC_mask.npy": "FITC: 300nm",
         "Captured TRITC_mask.npy": "TRITC: 1300nm",
     }
-
+    rename_mapping = {
+    "Captured FITC_mask.npy": "Captured Cy5_mask.npy",
+    "Captured TRITC_mask.npy": "Captured FITC_mask.npy",
+    "Captured Cy5_mask.npy": "Captured TRITC_mask.npy",
+    }
     with h5py.File(output_hdf5_path, 'w') as hdf5_file:
         image_dataset = None  # Placeholder for image patches dataset
         mask_dataset = None   # Placeholder for mask patches dataset
@@ -94,7 +98,8 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
 
             # Load masks
             masks = {mask_name: np.load(mask_path) for mask_name, mask_path in mask_paths.items()}
-
+            if "2024_11_29" in nd2_path: # Rename the masks for the 2024_11_29 dataset because the masks are in the wrong order
+                masks = {new_name: masks[old_name] for old_name, new_name in rename_mapping.items()}
             # Ensure masks have the same spatial dimensions as the image
             for mask_name, mask_array in masks.items():
                 if mask_array.shape != (height, width):

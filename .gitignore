@@ -166,3 +166,4 @@ best_multiclass_unet_model.pth
 *.nd2
 *.pth
 *.hdf5
+dataset/2024_11_29
