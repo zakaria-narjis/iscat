@@ -67,7 +67,7 @@ class Labeler:
                     mask = self.create_labels_mask(canvas_shape, particles_positions_df)
                     
                     mask_path = fluo_image_path.replace(".tif","_mask.npy")
-                    np.save(mask_path,mask)
+                np.save(mask_path,mask)
         elif segmentation_method == "kmeans":
             for fluo_image_path in fluo_images_paths:
                 mask_path = fluo_image_path.replace(".tif", "_mask_kmeans.npy")
