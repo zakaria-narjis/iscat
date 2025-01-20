@@ -99,6 +99,7 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
             # Load masks
             masks = {mask_name: np.load(mask_path) for mask_name, mask_path in mask_paths.items()}
             if "2024_11_29" in nd2_path: # Rename the masks for the 2024_11_29 dataset because the masks are in the wrong order
+                print('Found 2024_11_29 masks')
                 masks = {new_name: masks[old_name] for old_name, new_name in rename_mapping.items()}
             # Ensure masks have the same spatial dimensions as the image
             for mask_name, mask_array in masks.items():
@@ -158,8 +159,9 @@ if __name__=="__main__":
     args = parser.parse_args()
     data_path_1 = os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02')
     data_path_2 = os.path.join('data', '2024_11_12', 'Metasurface', 'Chip_01')
+    data_path_3 = os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
     nd2_paths = []
-    for data_path in [data_path_1,data_path_2]:
+    for data_path in [data_path_1,data_path_2,data_path_3]:
         nd2_paths.extend(
             get_nd2_paths(data_path, args.datatype)
         )
