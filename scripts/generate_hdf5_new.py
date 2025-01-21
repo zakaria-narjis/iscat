@@ -5,6 +5,7 @@ import pandas as pd
 from nd2 import ND2File
 import argparse
 from scipy.ndimage import binary_fill_holes
+import json
 
 def get_nd2_paths(base_path, option):
     """
@@ -33,12 +34,9 @@ def create_instance_mask(bbox_data, shape, class_id):
         class_id (int): Class ID for the particles
         
     Returns:
-        tuple: (instance_masks, bboxes, class_labels)
+        list of dict: List of instance annotations
     """
-    instance_masks = []
-    bboxes = []
-    class_labels = []
-    
+    instances = []
     y, x = np.ogrid[:shape[0], :shape[1]]
     
     for _, row in bbox_data.iterrows():
@@ -51,11 +49,16 @@ def create_instance_mask(bbox_data, shape, class_id):
         ellipse_mask = ((x - center_x) / axes_x)**2 + ((y - center_y) / axes_y)**2 <= 1
         ellipse_mask = binary_fill_holes(ellipse_mask).astype(np.uint8)
         
-        instance_masks.append(ellipse_mask)
-        bboxes.append([row['xMin'], row['yMin'], row['xMax'], row['yMax']])
-        class_labels.append(class_id)
+        # Create instance annotation
+        instance = {
+            'bbox': [float(row['xMin']), float(row['yMin']), float(row['xMax']), float(row['yMax'])],
+            'segmentation': ellipse_mask.tolist(),  # Convert to list for JSON serialization
+            'category_id': int(class_id),
+            'area': float(ellipse_mask.sum())
+        }
+        instances.append(instance)
     
-    return instance_masks, bboxes, class_labels
+    return instances
 
 def load_bbox_data(nd2_dir, mask_name):
     """
@@ -92,7 +95,7 @@ def extract_patch_instances(bbox_data, patch_coords, class_id):
 def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
     """
     Load ND2 files, extract image and mask patches, and save them into an HDF5 file with metadata.
-    Now includes instance segmentation information.
+    Now includes better organized instance segmentation information.
     """
     patch_height, patch_width = patch_size
 
@@ -118,13 +121,20 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
         # Initialize datasets
         image_dataset = None
         mask_dataset = None  # For semantic segmentation
-        instance_dataset = None  # For instance segmentation
-        bbox_dataset = None
-        label_dataset = None
+        annotations_dataset = None  # For instance segmentation annotations
 
-        hdf5_file.attrs["description"] = "Image and mask patches with instance segmentation data."
-        hdf5_file.attrs["mask_info"] = ", ".join([f"class:{idx} ({mask_metadata[mask]})" for idx, mask in enumerate(mask_order)])
+        # Create category information
+        categories = [
+            {'id': 0, 'name': 'Cy5', 'size_nm': 80},
+            {'id': 1, 'name': 'FITC', 'size_nm': 300},
+            {'id': 2, 'name': 'TRITC', 'size_nm': 1300}
+        ]
+        
+        # Store categories as JSON string in attributes
+        hdf5_file.attrs["categories"] = json.dumps(categories)
+        hdf5_file.attrs["description"] = "Image and mask patches with instance segmentation annotations."
 
+        patch_idx = 0
         for nd2_path in nd2_paths:
             print(f"Processing {nd2_path}...")
             
@@ -161,28 +171,24 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
                                   for mask_name in mask_order]
                     
                     # Process instance segmentation data
-                    all_instance_masks = []
-                    all_bboxes = []
-                    all_labels = []
+                    patch_instances = []
                     
                     for class_id, mask_name in enumerate(mask_order):
                         # Filter bounding boxes for this patch
                         patch_bbox_data = extract_patch_instances(bbox_data[mask_name], patch_coords, class_id)
                         
                         if not patch_bbox_data.empty:
-                            instance_masks, bboxes, labels = create_instance_mask(
+                            instances = create_instance_mask(
                                 patch_bbox_data, 
                                 (patch_height, patch_width),
                                 class_id
                             )
-                            all_instance_masks.extend(instance_masks)
-                            all_bboxes.extend(bboxes)
-                            all_labels.extend(labels)
+                            patch_instances.extend(instances)
 
                     # Initialize or resize datasets
                     if image_dataset is None:
                         image_dataset = hdf5_file.create_dataset(
-                            "image_patches",
+                            "images",
                             shape=(0, num_slices, patch_height, patch_width),
                             maxshape=(None, num_slices, patch_height, patch_width),
                             chunks=(1, num_slices, patch_height, patch_width),
@@ -190,60 +196,41 @@ def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
                         )
 
                         mask_dataset = hdf5_file.create_dataset(
-                            "mask_patches",
+                            "semantic_masks",
                             shape=(0, len(mask_order), patch_height, patch_width),
                             maxshape=(None, len(mask_order), patch_height, patch_width),
                             chunks=(1, len(mask_order), patch_height, patch_width),
                             dtype=np.uint8
                         )
-
-                        # Add instance segmentation datasets
-                        instance_dataset = hdf5_file.create_dataset(
-                            "instance_masks",
-                            shape=(0, patch_height, patch_width),
-                            maxshape=(None, patch_height, patch_width),
-                            chunks=(1, patch_height, patch_width),
-                            dtype=np.uint8
-                        )
-
-                        bbox_dataset = hdf5_file.create_dataset(
-                            "bboxes",
-                            shape=(0, 4),  # [xmin, ymin, xmax, ymax]
-                            maxshape=(None, 4),
-                            chunks=(1, 4),
-                            dtype=np.float32
-                        )
-
-                        label_dataset = hdf5_file.create_dataset(
-                            "class_labels",
+                        
+                        # Create dataset for instance annotations
+                        annotations_dataset = hdf5_file.create_dataset(
+                            "instance_annotations",
                             shape=(0,),
                             maxshape=(None,),
-                            chunks=(1,),
-                            dtype=np.int32
+                            dtype=h5py.special_dtype(vlen=str)  # Variable length string for JSON
                         )
 
-                    # Save patches and instance data
+                    # Save patches and annotations
                     image_dataset.resize(image_dataset.shape[0] + 1, axis=0)
                     image_dataset[-1] = image_patch
 
                     mask_dataset.resize(mask_dataset.shape[0] + 1, axis=0)
                     mask_dataset[-1] = np.stack(mask_patches)
 
-                    # Save instance segmentation data
-                    if all_instance_masks:
-                        current_size = instance_dataset.shape[0]
-                        new_size = current_size + len(all_instance_masks)
+                    # Save instance annotations with patch index
+                    if patch_instances:
+                        annotation_data = {
+                            'image_id': patch_idx,
+                            'instances': patch_instances
+                        }
                         
-                        instance_dataset.resize(new_size, axis=0)
-                        instance_dataset[current_size:] = np.stack(all_instance_masks)
-                        
-                        bbox_dataset.resize(new_size, axis=0)
-                        bbox_dataset[current_size:] = np.array(all_bboxes)
-                        
-                        label_dataset.resize(new_size, axis=0)
-                        label_dataset[current_size:] = np.array(all_labels)
+                        annotations_dataset.resize(annotations_dataset.shape[0] + 1, axis=0)
+                        annotations_dataset[-1] = json.dumps(annotation_data)
+                    
+                    patch_idx += 1
 
-    print(f"Image, mask patches, and instance segmentation data saved to {output_hdf5_path}")
+    print(f"Image, mask patches, and instance annotations saved to {output_hdf5_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate HDF5 files for image and mask patches with instance segmentation.")
@@ -260,6 +247,7 @@ if __name__ == "__main__":
     data_path_1 = os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02')
     data_path_2 = os.path.join('data', '2024_11_12', 'Metasurface', 'Chip_01')
     # data_path_3 = os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
+    
     nd2_paths = []
     for data_path in [data_path_1, data_path_2]:
         nd2_paths.extend(get_nd2_paths(data_path, args.datatype))
