@@ -95,7 +95,7 @@ class iScatDataset(Dataset):
         length = len(self.image_paths)*self.duplication_factor
         return length
 class iScatDataset2(Dataset):
-    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None):
+    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None,multi_class=False):
         """
         PyTorch Dataset for microscopy data stored in an HDF5 file.
 
@@ -110,7 +110,7 @@ class iScatDataset2(Dataset):
         self.classes = classes
         self.apply_augmentation = apply_augmentation
         self.normalize = normalize
-
+        self.multi_class = multi_class
         # Open HDF5 file and get dataset sizes
         with h5py.File(hdf5_path, "r") as f:
             self.image_dataset_size = f["image_patches"].shape[0]
@@ -150,10 +150,17 @@ class iScatDataset2(Dataset):
             mask = masks[self.classes[0]]
         else:
             # Multi-class mask
-            mask = torch.zeros_like(masks[0], dtype=torch.uint8)
-            for i, cls in enumerate(self.classes, start=1):
-                mask[masks[cls] > 0] = i  # Assign class indices
-
+            if self.multi_class:
+                mask = torch.zeros_like(masks[0], dtype=torch.uint8)
+                for i, cls in enumerate(self.classes, start=1):
+                    mask[masks[cls] > 0] = i  # Assign class indices
+            else:
+                # Binary mask
+                mask = torch.zeros_like(masks[0], dtype=torch.uint8)
+                for cls in self.classes:
+                    mask += masks[cls]
+                mask[mask>1] = 1  # Ensure binary mask
+                
         # Apply augmentation using torchvision.transforms.functional
         if self.apply_augmentation:
             # Random horizontal flipping
