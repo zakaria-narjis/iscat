@@ -4,24 +4,13 @@ import numpy as np
 import pandas as pd
 from nd2 import ND2File
 import argparse
-from typing import Dict, List, Tuple
 
 def get_nd2_paths(base_path, option):
-    """
-    Recursively collects paths to .nd2 files inside specified subfolders of Metasurface directories.
-
-    Args:
-        base_path (str): The base directory to search.
-        option (str): The folder to consider ('Brightfield' or 'Laser').
-
-    Returns:
-        list: A list of paths to .nd2 files.
-    """
+    """Same as before"""
     if option not in {'Brightfield', 'Laser'}:
         raise ValueError("Option must be 'Brightfield' or 'Laser'")
     
     nd2_paths = []
-    
     for root, dirs, files in os.walk(base_path):
         if 'Metasurface' in os.path.basename(root):
             target_folder = os.path.join(root, option)
@@ -30,113 +19,124 @@ def get_nd2_paths(base_path, option):
                     if file.endswith('.nd2'):
                         nd2_paths.append(os.path.join(target_folder, file))  
     return nd2_paths
-class InstanceMaskGenerator:
-    def __init__(self):
-        self.class_info = {
-            "Captured Cy5": {"id": 0, "name": "Cy5", "size": "80nm"},
-            "Captured FITC": {"id": 1, "name": "FITC", "size": "300nm"},
-            "Captured TRITC": {"id": 2, "name": "TRITC", "size": "1300nm"}
-        }
-        
-        # Special case handling for 2024_11_29
-        self.rename_mapping = {
-            "Captured Cy5": "Captured FITC",
-            "Captured FITC": "Captured TRITC",
-            "Captured TRITC": "Captured Cy5"
-        }
 
-    def create_instance_mask(self, canvas_shape: Tuple[int, int], 
-                           particles_df: pd.DataFrame) -> np.ndarray:
-        """
-        Create instance mask where each instance has a unique ID
-        """
-        instance_canvas = np.zeros(canvas_shape, dtype=np.uint16)
-        y, x = np.ogrid[:canvas_shape[0], :canvas_shape[1]]
-        
-        for idx, row in particles_df.iterrows():
-            instance_id = idx + 1  # Start from 1, 0 is background
-            center_x = int((row['xMin'] + row['xMax']) / 2)
-            center_y = int((row['yMin'] + row['yMax']) / 2)
-            axes_x = max(int((row['xMax'] - row['xMin']) / 2), 1)
-            axes_y = max(int((row['yMax'] - row['yMin']) / 2), 1)
-            
-            ellipse_mask = ((x - center_x) / axes_x)**2 + ((y - center_y) / axes_y)**2 <= 1
-            instance_canvas[ellipse_mask] = instance_id
-            
-        return instance_canvas
-
-    def extract_patch_instances(self, instance_mask: np.ndarray, 
-                              y_start: int, x_start: int, 
-                              patch_size: Tuple[int, int]) -> Tuple[np.ndarray, int]:
-        """
-        Extract patch from instance mask and remap instance IDs to be consecutive
-        """
-        patch = instance_mask[y_start:y_start + patch_size[0], 
-                            x_start:x_start + patch_size[1]].copy()
-        
-        # Remap instance IDs to be consecutive starting from 1
-        unique_ids = np.unique(patch)
-        unique_ids = unique_ids[unique_ids != 0]  # Exclude background
-        
-        id_map = {old_id: new_id for new_id, old_id in enumerate(unique_ids, start=1)}
-        id_map[0] = 0  # Keep background as 0
-        
-        for old_id, new_id in id_map.items():
-            patch[patch == old_id] = new_id
-            
-        return patch, len(unique_ids)
-
-def process_data(nd2_paths: List[str], 
-                output_path: str,
-                selected_classes: List[int],
-                patch_size: Tuple[int, int] = (256, 256),
-                overlap: int = 0,
-                mode: str = "instance"):
+def create_instance_mask(canvas_shape, bbox_data, class_id):
     """
-    Process ND2 files and create HDF5 dataset for instance segmentation
+    Create instance segmentation mask for particles within a patch.
+    
+    Args:
+        canvas_shape (tuple): Shape of the canvas (height, width)
+        bbox_data (DataFrame): DataFrame containing bounding box information
+        class_id (int): Class ID for the current particle type
+        
+    Returns:
+        numpy.ndarray: Instance segmentation mask where each instance has a unique ID
     """
-    mask_gen = InstanceMaskGenerator()
+    instance_canvas = np.zeros(canvas_shape, dtype=np.uint8)
+    y, x = np.ogrid[:canvas_shape[0], :canvas_shape[1]]
+    
+    for instance_id, row in enumerate(bbox_data.itertuples(), start=1):
+        center_x = int((row.xMin + row.xMax) / 2)
+        center_y = int((row.yMin + row.yMax) / 2)
+        axes_x = max(int((row.xMax - row.xMin) / 2), 1)
+        axes_y = max(int((row.yMax - row.yMin) / 2), 1)
+        
+        # Create ellipse mask
+        ellipse_mask = ((x - center_x) / axes_x)**2 + ((y - center_y) / axes_y)**2 <= 1
+        instance_canvas[ellipse_mask] = instance_id
+    
+    return instance_canvas
+
+def get_instances_in_patch(bbox_df, patch_coords, patch_size):
+    """
+    Filter instances that fall within the current patch.
+    
+    Args:
+        bbox_df (DataFrame): DataFrame containing bounding box information
+        patch_coords (tuple): Top-left coordinates of the patch (x, y)
+        patch_size (tuple): Size of the patch (height, width)
+        
+    Returns:
+        DataFrame: Filtered DataFrame containing only instances within the patch
+    """
+    x, y = patch_coords
+    h, w = patch_size
+    
+    # Adjust coordinates to be relative to the patch
+    patch_instances = bbox_df[
+        (bbox_df['xMin'] >= x) & 
+        (bbox_df['xMax'] <= x + w) &
+        (bbox_df['yMin'] >= y) & 
+        (bbox_df['yMax'] <= y + h)
+    ].copy()
+    
+    if not patch_instances.empty:
+        patch_instances['xMin'] = patch_instances['xMin'] - x
+        patch_instances['xMax'] = patch_instances['xMax'] - x
+        patch_instances['yMin'] = patch_instances['yMin'] - y
+        patch_instances['yMax'] = patch_instances['yMax'] - y
+    
+    return patch_instances
+
+def nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=(256, 256), overlap=0):
+    """
+    Load ND2 files, extract image and instance masks, and save them into an HDF5 file.
+    
+    Args:
+        nd2_paths (list): Paths to ND2 files
+        output_hdf5_path (str): Output HDF5 file path
+        patch_size (tuple): Size of patches (height, width)
+        overlap (int): Overlap between patches
+    """
     patch_height, patch_width = patch_size
     
-    with h5py.File(output_path, 'w') as hdf5_file:
+    # Define particle classes and their metadata
+    particle_classes = [
+        ("Captured Cy5", 0, "80nm"),
+        ("Captured FITC", 1, "300nm"),
+        ("Captured TRITC", 2, "1300nm")
+    ]
+    
+    # Special case handling for 2024_11_29
+    rename_mapping = {
+        "Captured Cy5": "Captured FITC",
+        "Captured FITC": "Captured TRITC",
+        "Captured TRITC": "Captured Cy5"
+    }
+    
+    with h5py.File(output_hdf5_path, 'w') as hdf5_file:
+        # Initialize datasets
         image_dataset = None
-        instance_dataset = None
-        semantic_dataset = None
-        bbox_dataset = None
+        instance_dataset = None  # Will store instance masks
+        class_dataset = None     # Will store class labels for each instance
         
-        # Store metadata
-        hdf5_file.attrs["description"] = "Instance segmentation dataset"
-        hdf5_file.attrs["selected_classes"] = selected_classes
+        # Add metadata
+        hdf5_file.attrs["description"] = "Image patches with instance segmentation masks"
+        hdf5_file.attrs["class_info"] = ", ".join([f"class:{idx} ({name}: {size})" for name, idx, size in particle_classes])
         
         for nd2_path in nd2_paths:
             print(f"Processing {nd2_path}...")
-            is_special_case = "2024_11_29" in nd2_path
             
-            # Load image
+            # Load image data
             with ND2File(nd2_path) as nd2:
                 image = nd2.asarray()
+                if image.ndim != 3:
+                    raise ValueError(f"Expected 3D data (Z, H, W), got shape {image.shape}")
                 num_slices, height, width = image.shape
             
-            # Process each class
-            full_instance_masks = []
-            for class_name, info in mask_gen.class_info.items():
-                if info["id"] not in selected_classes:
-                    continue
-                    
-                # Handle special case renaming
-                csv_name = f"{class_name}.csv"
-                if is_special_case:
-                    csv_name = f"{mask_gen.rename_mapping[class_name]}.csv"
-                
-                csv_path = os.path.join(os.path.dirname(nd2_path), csv_name)
-                if not os.path.exists(csv_path):
-                    print(f"Warning: {csv_path} not found, skipping...")
-                    continue
-                
-                # Load and process particle data
-                particles_df = pd.read_csv(csv_path)
-                instance_mask = mask_gen.create_instance_mask((height, width), particles_df)
-                full_instance_masks.append((instance_mask, info["id"]))
+            nd2_dir = os.path.dirname(nd2_path)
+            is_special_case = "2024_11_29" in nd2_path
+            
+            # Load bbox data for all classes
+            bbox_data = {}
+            for particle_name, class_id, _ in particle_classes:
+                actual_name = rename_mapping[particle_name] if is_special_case else particle_name
+                csv_path = os.path.join(nd2_dir, f"{actual_name}.csv")
+                if os.path.exists(csv_path):
+                    bbox_data[class_id] = pd.read_csv(csv_path)
+                else:
+                    print(f"Warning: {csv_path} not found")
+                    bbox_data[class_id] = pd.DataFrame()
             
             # Extract patches
             for y in range(0, height - patch_height + 1, patch_height - overlap):
@@ -144,37 +144,31 @@ def process_data(nd2_paths: List[str],
                     # Extract image patch
                     image_patch = image[:, y:y + patch_height, x:x + patch_width]
                     
-                    # Process instance masks for this patch
-                    instance_patches = []
-                    semantic_patches = []
-                    bbox_info = []
+                    # Create instance masks for each class
+                    instance_masks = []
+                    for class_id in range(len(particle_classes)):
+                        if class_id in bbox_data:
+                            patch_instances = get_instances_in_patch(
+                                bbox_data[class_id], 
+                                (x, y), 
+                                (patch_height, patch_width)
+                            )
+                            instance_mask = create_instance_mask(
+                                (patch_height, patch_width), 
+                                patch_instances, 
+                                class_id
+                            )
+                            instance_masks.append(instance_mask)
+                        else:
+                            instance_masks.append(np.zeros((patch_height, patch_width), dtype=np.uint8))
                     
-                    for instance_mask, class_id in full_instance_masks:
-                        patch_mask, num_instances = mask_gen.extract_patch_instances(
-                            instance_mask, y, x, patch_size)
-                        
-                        if num_instances > 0:
-                            instance_patches.append(patch_mask)
-                            
-                            # Create semantic mask (binary mask for each class)
-                            semantic_mask = (patch_mask > 0).astype(np.uint8)
-                            semantic_patches.append(semantic_mask)
-                            
-                            # Store bounding box information
-                            for instance_id in range(1, num_instances + 1):
-                                instance_pixels = np.where(patch_mask == instance_id)
-                                if len(instance_pixels[0]) > 0:
-                                    ymin, xmin = np.min(instance_pixels, axis=1)
-                                    ymax, xmax = np.max(instance_pixels, axis=1)
-                                    bbox_info.append([class_id, instance_id, xmin, ymin, xmax, ymax])
-                    
-                    if not instance_patches:
-                        continue
+                    # Stack instance masks
+                    stacked_instances = np.stack(instance_masks)
                     
                     # Initialize or resize datasets
                     if image_dataset is None:
                         image_dataset = hdf5_file.create_dataset(
-                            "images",
+                            "image_patches",
                             shape=(0, num_slices, patch_height, patch_width),
                             maxshape=(None, num_slices, patch_height, patch_width),
                             chunks=(1, num_slices, patch_height, patch_width),
@@ -183,54 +177,29 @@ def process_data(nd2_paths: List[str],
                         
                         instance_dataset = hdf5_file.create_dataset(
                             "instance_masks",
-                            shape=(0, len(selected_classes), patch_height, patch_width),
-                            maxshape=(None, len(selected_classes), patch_height, patch_width),
-                            chunks=(1, len(selected_classes), patch_height, patch_width),
-                            dtype=np.uint16
-                        )
-                        
-                        semantic_dataset = hdf5_file.create_dataset(
-                            "semantic_masks",
-                            shape=(0, len(selected_classes), patch_height, patch_width),
-                            maxshape=(None, len(selected_classes), patch_height, patch_width),
-                            chunks=(1, len(selected_classes), patch_height, patch_width),
+                            shape=(0, len(particle_classes), patch_height, patch_width),
+                            maxshape=(None, len(particle_classes), patch_height, patch_width),
+                            chunks=(1, len(particle_classes), patch_height, patch_width),
                             dtype=np.uint8
                         )
-                        
-                        bbox_dataset = hdf5_file.create_dataset(
-                            "bboxes",
-                            shape=(0, 6),  # [class_id, instance_id, xmin, ymin, xmax, ymax]
-                            maxshape=(None, 6),
-                            chunks=(1, 6),
-                            dtype=np.float32
-                        )
                     
-                    # Save patches
+                    # Save patches and masks
                     image_dataset.resize(image_dataset.shape[0] + 1, axis=0)
                     image_dataset[-1] = image_patch
                     
                     instance_dataset.resize(instance_dataset.shape[0] + 1, axis=0)
-                    instance_dataset[-1] = np.stack(instance_patches)
-                    
-                    semantic_dataset.resize(semantic_dataset.shape[0] + 1, axis=0)
-                    semantic_dataset[-1] = np.stack(semantic_patches)
-                    
-                    if bbox_info:
-                        current_size = bbox_dataset.shape[0]
-                        bbox_dataset.resize(current_size + len(bbox_info), axis=0)
-                        bbox_dataset[current_size:] = bbox_info
+                    instance_dataset[-1] = stacked_instances
+
+    print(f"Dataset saved to {output_hdf5_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate HDF5 dataset for instance segmentation")
+    parser = argparse.ArgumentParser(description="Generate HDF5 files with instance segmentation masks.")
     parser.add_argument("--datatype", type=str, choices=["Brightfield", "Laser"], required=True)
     parser.add_argument("--output_path", type=str, default='dataset')
     parser.add_argument("--patch_size", type=int, nargs=2, default=(256, 256))
     parser.add_argument("--overlap", type=int, default=0)
-    parser.add_argument("--classes", type=int, nargs='+', default=[0, 1, 2],
-                      help="Class IDs to include (0: Cy5, 1: FITC, 2: TRITC)")
     args = parser.parse_args()
 
-    # Setup paths
     data_paths = [
         os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02'),
         os.path.join('data', '2024_11_12', 'Metasurface', 'Chip_01'),
@@ -240,9 +209,6 @@ if __name__ == "__main__":
     nd2_paths = []
     for data_path in data_paths:
         nd2_paths.extend(get_nd2_paths(data_path, args.datatype))
-    
-    os.makedirs(args.output_path, exist_ok=True)
+        
     output_hdf5_path = os.path.join(args.output_path, f"{args.datatype.lower()}_instance.hdf5")
-    
-    process_data(nd2_paths, output_hdf5_path, args.classes, 
-                patch_size=args.patch_size, overlap=args.overlap)
+    nd2_to_hdf5(nd2_paths, output_hdf5_path, patch_size=args.patch_size, overlap=args.overlap)
