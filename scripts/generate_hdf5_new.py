@@ -146,7 +146,7 @@ def nd2_to_hdf5(nd2_paths: List[str], output_hdf5_path: str, patch_size=(256, 25
         "Captured TRITC_mask.npy"   # Class 2: TRITC (1300nm)
     ]
     
-    bbox_files = [path.replace('_mask.npy', '_mask.csv') for path in mask_order]
+    bbox_files = [path.replace('_mask.npy', '.csv') for path in mask_order]
     
     with h5py.File(output_hdf5_path, 'w') as hdf5_file:
         image_dataset = None
