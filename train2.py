@@ -17,6 +17,7 @@ from src.visualization import predict, batch_plot_images_with_masks
 import logging
 from sklearn.model_selection import train_test_split
 import h5py
+from src.models.Unet_networks import AttU_Net, R2AttU_Net
 
 def load_config(config_path):
     """
@@ -181,12 +182,23 @@ def main(args):
 
     num_classes = len(config['data']['train_dataset']['fluo_masks_indices']) + 1 
     config['training']['num_classes'] = num_classes
-    model = UNet(
-        in_channels=201,
-        num_classes=num_classes,
-        init_features=config['model']['init_features'],
-        pretrained=config['model']['pretrained']
-    )
+    if config['model']['type'] == 'UNet':
+        model = UNet(
+            in_channels=201,
+            num_classes=num_classes,
+            init_features=config['model']['init_features'],
+            pretrained=config['model']['pretrained']
+        )
+    elif config['model']['type'] == 'AttU_Net':
+        model = AttU_Net(
+            img_ch=201,
+            output_ch=num_classes
+        )
+    elif config['model']['type'] == 'R2AttU_Net':
+        model = R2AttU_Net(
+            img_ch=201,
+            output_ch=num_classes
+        )
     if config['training']['class_weights']['use']:
         class_weights=Utils.calculate_class_weights_from_masks(Utils.load_masks_from_hdf5(hdf5_path)).to(device)
     else:
