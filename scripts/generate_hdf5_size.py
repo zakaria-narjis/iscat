@@ -166,8 +166,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process particle data and create HDF5 dataset")
     parser.add_argument("--datatype", type=str, choices=["Brightfield", "Laser"], 
                        required=True, help="Data type")
-    parser.add_argument("--output_path", type=str, default='particle_dataset.hdf5',
-                       help="Output HDF5 file path")
+    parser.add_argument("--output_path", type=str, default='dataset', help="Folder Path for the output HDF5 file.")
     parser.add_argument("--averaging_axis", type=str, choices=['x', 'y'], 
                        default='x', help="Axis for averaging")
     parser.add_argument("--target_size", type=int, default=16,
@@ -181,14 +180,14 @@ if __name__ == "__main__":
     data_paths = [
         os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02'),
         os.path.join('data', '2024_11_12', 'Metasurface', 'Chip_01'),
-        os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
+        # os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
     ]
     
     # Collect all file pairs
     all_file_pairs = []
     for data_path in data_paths:
         all_file_pairs.extend(get_nd2_and_csv_paths(data_path, args.datatype))
-    
+    output_hdf5_path = os.path.join(args.output_path, f"{args.datatype.lower()}_particles.hdf5")
     # Process dataset
     process_dataset(
         all_file_pairs,
