@@ -47,7 +47,7 @@ def extract_particle_region(image, bbox):
 
 def average_region(region, axis='x', target_size=16):
     """
-    Average the region along specified axis and handle padding/resizing.
+    Average the region along specified axis and handle symmetric edge padding/resizing.
     
     Args:
         region (np.ndarray): Input region of shape (Z, H, W)
@@ -72,19 +72,31 @@ def average_region(region, axis='x', target_size=16):
         # Use interpolation to reduce size
         return cv2.resize(averaged, (averaged.shape[1], target_size))
     else:
-        # Pad with zeros
+        # Calculate padding sizes for both sides
+        total_pad = target_size - current_size
+        pad_top = total_pad // 2
+        pad_bottom = total_pad - pad_top
+        
+        # Create padded array using edge values
         padded = np.zeros((target_size, averaged.shape[1]))
-        padded[:current_size] = averaged
+        padded[pad_top:pad_top+current_size] = averaged
+        
+        # Fill top padding with first row
+        padded[:pad_top] = averaged[0]
+        # Fill bottom padding with last row
+        padded[pad_top+current_size:] = averaged[-1]
+        
         return padded
 
-def radial_average(image, center, axes):
+def radial_average(image, center, axes, target_size=None):
     """
-    Perform radial averaging over an elliptical region.
+    Perform radial averaging over an elliptical region with optional padding.
     
     Args:
         image (np.ndarray): Input image of shape (Z, H, W)
         center (tuple): (x, y) center coordinates
         axes (tuple): (x_axis, y_axis) lengths
+        target_size (int): Optional target size for output profile
     
     Returns:
         np.ndarray: Radially averaged values
@@ -107,7 +119,25 @@ def radial_average(image, center, axes):
             if mask.any():
                 radial_profile[i, r] = image[i][mask].mean()
     
-    return radial_profile.T
+    profile = radial_profile.T
+    
+    # Add padding if target_size is specified
+    if target_size is not None and target_size > max_radius:
+        total_pad = target_size - max_radius
+        pad_top = total_pad // 2
+        pad_bottom = total_pad - pad_top
+        
+        padded = np.zeros((target_size, z))
+        padded[pad_top:pad_top+max_radius] = profile
+        
+        # Fill top padding with first row
+        padded[:pad_top] = profile[0]
+        # Fill bottom padding with last row
+        padded[pad_top+max_radius:] = profile[-1]
+        
+        return padded
+    
+    return profile
 
 def process_dataset(file_pairs, output_path, averaging_axis='x', target_size=16, 
                    use_radial=False):
@@ -141,7 +171,7 @@ def process_dataset(file_pairs, output_path, averaging_axis='x', target_size=16,
                         if use_radial:
                             center = ((bbox[1] - bbox[0])//2, (bbox[3] - bbox[2])//2)
                             axes = ((bbox[1] - bbox[0])//2, (bbox[3] - bbox[2])//2)
-                            processed = radial_average(region, center, axes)
+                            processed = radial_average(region, center, axes, target_size)
                         else:
                             processed = average_region(region, averaging_axis, target_size)
                         
