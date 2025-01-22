@@ -191,7 +191,7 @@ if __name__ == "__main__":
     # Process dataset
     process_dataset(
         all_file_pairs,
-        args.output_path,
+        output_hdf5_path,
         averaging_axis=args.averaging_axis,
         target_size=args.target_size,
         use_radial=args.use_radial
