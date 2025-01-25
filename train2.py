@@ -234,7 +234,7 @@ def main(args):
     )
     # Create dataloaders
     train_loader, val_loader ,test_loader= create_dataloaders(
-        train_dataset, valid_dataset, batch_size=config['training']['batch_size']
+        train_dataset, valid_dataset, test_dataset, batch_size=config['training']['batch_size']
     )
 
     if config['model']['type'] == 'UNet':
