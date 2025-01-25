@@ -36,8 +36,8 @@ data:
       - ${data.image_size}
 
 training:
-  batch_size: 32
-  num_epochs: 200
+  batch_size: 16
+  num_epochs: 400
   device: "cuda:11"
   loss_type: "dice" # Options: crossentropy, dice, combined
   num_classes: ${model.num_classes}
@@ -60,7 +60,7 @@ training:
     patience: 20
 
 model:
-  type: "UNet"
+  type: "R2U_Net" #AttU_Net #R2AttU_Net #UNet #R2U_Net
   in_channels: 3 #not used  
   num_classes: 2 #not used  
   init_features: 64

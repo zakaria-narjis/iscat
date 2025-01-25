@@ -168,7 +168,7 @@ if __name__ == "__main__":
     data_path_3 = os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
     
     nd2_paths = []
-    for data_path in [data_path_1, data_path_2, data_path_3]:
+    for data_path in [data_path_1, data_path_2]:
         nd2_paths.extend(get_nd2_paths(data_path, args.datatype))
         
     output_hdf5_path = os.path.join(args.output_path, f"{args.datatype.lower()}.hdf5")

@@ -14,7 +14,33 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 import random
+import numpy as np
 
+import numpy as np
+
+def extract_averaged_frames(image, num_frames=12):
+   """
+   Extracts the average of evenly spaced frame chunks from a 3D image.
+   
+   Parameters:
+   image (numpy.ndarray): 3D image with shape (Z, H, W)
+   num_frames (int): Number of frames to extract
+   
+   Returns:
+   numpy.ndarray: 3D array of extracted averaged frames with shape (num_frames, H, W)
+   """
+   z_len = image.shape[0]
+   chunk_size = z_len // num_frames
+   
+   averaged_frames = []
+   for i in range(num_frames):
+       start = i * chunk_size
+       end = start + chunk_size
+       chunk = image[start:end]
+       averaged_frames.append(np.mean(chunk, axis=0))
+   
+   return np.array(averaged_frames)
+    
 class iScatDataset(Dataset):
     def __init__(self, image_paths, target_paths, seg_args=None,image_size=(224,224),train=True,preload_image=False,reload_mask=False,apply_augmentation=True,duplication_factor=100,normalize=True,seg_method="comdet",fluo_masks_indices=[0,1,2],device="cpu",apply_mask_correction=True):
         self.image_paths = image_paths
@@ -75,6 +101,9 @@ class iScatDataset(Dataset):
         mask = TF.crop(mask, i, j, h, w)
         if self.apply_augmentation:
             image,mask = self.augment(image,mask)
+        if self.normalize:
+            m = image.mean()
+            s = image.std()
         # Transform to tensor
         return image, mask
 
@@ -129,7 +158,7 @@ class iScatDataset2(Dataset):
         with h5py.File(self.hdf5_path, "r") as f:
             image = f["image_patches"][idx].copy()  # Shape: (Z, H, W)
             masks = f["mask_patches"][idx].copy()   # Shape: (C, H, W)
-
+        image = extract_averaged_frames(image, num_frames=32)
         # Convert to float32
         image = torch.from_numpy(image.astype(np.float32))  # Convert image to tensor
         masks = torch.from_numpy(masks.astype(np.uint8))    # Convert masks to tensor

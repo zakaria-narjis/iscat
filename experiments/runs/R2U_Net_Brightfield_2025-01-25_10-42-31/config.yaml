@@ -1,0 +1,78 @@
+data:
+  data_paths:
+  - dataset/2024_11_11/Metasurface/Chip_02
+  - dataset/2024_11_12/Metasurface/Chip_01
+  data_type: Brightfield
+  fluo_masks_indices:
+  - 0
+  - 1
+  image_indices: 12
+  image_size: 256
+  normalize: false
+  seg_method: comdet
+  train_dataset:
+    apply_augmentation: true
+    device: cuda:11
+    fluo_masks_indices:
+    - 0
+    - 1
+    image_paths: <path_to_train_images>
+    image_size:
+    - 256
+    - 256
+    normalize: false
+    preload_image: true
+    seg_method: comdet
+    target_paths: <path_to_train_targets>
+  valid_dataset:
+    apply_augmentation: false
+    device: cuda:11
+    fluo_masks_indices:
+    - 0
+    - 1
+    image_paths: <path_to_validation_images>
+    image_size:
+    - 256
+    - 256
+    normalize: false
+    preload_image: true
+    seg_method: comdet
+    target_paths: <path_to_validation_targets>
+experiment_name: UNet
+logging:
+  tensorboard:
+    log_dir: experiments/runs
+model:
+  in_channels: 3
+  init_features: 64
+  num_classes: 2
+  pretrained: false
+  type: R2U_Net
+normalization:
+  z_score:
+    enabled: true
+    eps: 1.0e-08
+seed: 0
+training:
+  batch_size: 32
+  class_weights:
+    calculation_method: from_masks
+    use: false
+  device: cuda:11
+  early_stopping:
+    enabled: true
+    patience: 20
+  loss_type: dice
+  num_classes: 2
+  num_epochs: 400
+  optimizer:
+    parameters:
+      lr: 0.0001
+    type: Adam
+  scheduler:
+    parameters:
+      factor: 0.1
+      mode: min
+      patience: 8
+      verbose: true
+    type: ReduceLROnPlateau
