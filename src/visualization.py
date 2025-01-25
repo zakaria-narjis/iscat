@@ -53,11 +53,9 @@ def plot_image_with_masks(image, predicted_mask, ground_truth_mask, output_path=
         }
     else:
         predicted_colors = {
-            0: (0, 255, 0),      # Green for class 0
             1: (0, 0, 255),    # Blue for class 1
         }
         gt_colors = {
-            0: (255, 0, 0),      # Red for class 0
             1: (255,255, 0),    # Yellow for class
         }
     # Normalize image for visualization
@@ -89,10 +87,10 @@ def plot_image_with_masks(image, predicted_mask, ground_truth_mask, output_path=
     # Add legend
     legend_elements = []
     for class_label, color in predicted_colors.items():
-        legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=4, label=f'Predicted Class {class_label}'))
+        legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=2, label=f'Pred Class {class_label}'))
     for class_label, color in gt_colors.items():
-        legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=4, linestyle='dashed', label=f'GT Class {class_label}'))
-    ax2.legend(handles=legend_elements, loc='lower right', fontsize='small')
+        legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=2, linestyle='dashed', label=f'GT Class {class_label}'))
+    ax2.legend(handles=legend_elements, loc='lower right', fontsize='x-small')
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
