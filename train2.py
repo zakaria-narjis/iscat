@@ -237,7 +237,7 @@ def main(args):
         train_dataset, valid_dataset, test_dataset, batch_size=config['training']['batch_size']
     )
 
-    if config['model']['type'] == 'UNet':
+    if config['model']['type'] == 'U_Net':
         model = UNet(
             img_ch=in_channels,
             out_ch=out_channels,
