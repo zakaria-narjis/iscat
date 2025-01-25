@@ -20,7 +20,6 @@ class Trainer:
         config: dict,
         experiment_dir: str,
         class_weights=None,
-        normalize: bool = True,
         writer: SummaryWriter = None,
         verbose: bool = True
     ):
@@ -41,9 +40,7 @@ class Trainer:
         self.class_weights = class_weights
         self.config = config
         self.earlystoping_patience = config['early_stopping']['patience']
-        self.normalization_mean = None
-        self.normalization_std = None
-        self.normalize = normalize
+
         # Configure logging
         self.logger = logging.getLogger(__name__)
         log_level = logging.DEBUG if verbose else logging.WARNING
@@ -91,13 +88,7 @@ class Trainer:
     def compute_metrics(self, predictions, targets):
         if len(targets.shape) == 3:
             targets = targets.unsqueeze(1) # [B, 1, H, W]
-
-        if self.num_classes == 1:
-            pred_masks = (torch.sigmoid(predictions) > 0.5).float()
-            pred_one_hot = torch.cat([1 - pred_masks, pred_masks], dim=1)
-        else:
-            # pred_one_hot = torch.argmax(torch.softmax(predictions, dim=1), dim=1, keepdim=True) # [B, N, H, W]
-            pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
+        pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
         # target_one_hot = torch.cat([1 - targets, targets], dim=1)
         target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
         metric = self.miou_metric(pred_one_hot, target_one_hot) # [B, N, H, W]
@@ -109,10 +100,7 @@ class Trainer:
         total_miou = 0.0
 
         for batch_idx, (images, masks) in enumerate(train_loader):
-            images, masks = images.to(self.device), masks.to(self.device)
-            if self.normalize:
-                images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
-            
+            images, masks = images.to(self.device), masks.to(self.device)            
             # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
             predictions = self.model(images)
@@ -145,8 +133,6 @@ class Trainer:
         
         for images, masks in val_loader:
             images, masks = images.to(self.device), masks.to(self.device)
-            if self.normalize:
-                images = Utils.z_score_normalize(images, self.normalization_mean, self.normalization_std)
             # Forward pass on GPU
             predictions = self.model(images)
             
@@ -204,10 +190,6 @@ class Trainer:
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float('inf')
         no_improve = 0
-        if self.normalize: 
-            self.normalization_mean = train_loader.dataset.mean
-            self.normalization_std = train_loader.dataset.std
-        
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             train_loss, train_miou = self.train_epoch(train_loader, epoch)
             val_loss, val_miou, val_precision, val_recall, val_f1, class_metrics = self.validate(val_loader)

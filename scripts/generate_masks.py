@@ -4,7 +4,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.data_processing.utils import Utils
 import os 
 import argparse
-
+"""
+Not working due to ImageJ not working as expected/ refer to notebooks/labeling_script.ipynb for generating masks
+"""
 def get_fluo_paths(root_path:str, mode:str="Brightfield"):
     """
     Extract paths to .nd2 files and corresponding TIFF files from the specified mode folder.

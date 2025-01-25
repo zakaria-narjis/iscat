@@ -286,3 +286,28 @@ class Utils:
                 masks = mask_patches[:]
         
         return masks
+
+    @staticmethod
+    def extract_averaged_frames(image, num_frames=12):
+        """
+        Extracts the average of evenly spaced frame chunks from a 3D image.
+
+        Parameters:
+        image (numpy.ndarray): 3D image with shape (Z, H, W)
+        num_frames (int): Number of frames to extract
+
+        Returns:
+        numpy.ndarray: 3D array of extracted averaged frames with shape (num_frames, H, W)
+        """
+        z_len = image.shape[0]
+        chunk_size = z_len // num_frames
+
+        averaged_frames = []
+        for i in range(num_frames):
+            start = i * chunk_size
+            end = start + chunk_size
+            chunk = image[start:end]
+            averaged_frames.append(np.mean(chunk, axis=0))
+
+        return np.array(averaged_frames)
+    

@@ -8,9 +8,9 @@ pil_logger = logging.getLogger('PIL')
 pil_logger.setLevel(logging.INFO)
 plt.set_loglevel (level = 'warning')
 
-def normalize_image(image):
+def convert_image_8bit(image):
     """
-    Normalize a 16-bit grayscale image to 8-bit for visualization.
+    Convert a 16-bit grayscale image to 8-bit for visualization.
 
     Parameters:
         image (ndarray): 16-bit grayscale image.
@@ -42,17 +42,26 @@ def plot_image_with_masks(image, predicted_mask, ground_truth_mask, output_path=
         output_path: File path to save the visualization.
     """
     # Define colors for predicted and ground truth masks
-    predicted_colors = {
-        1: (0, 255, 0),      # Green for class 1
-        2: (0, 0, 255),    # Blue for class 2
-    }
-    gt_colors = {
-        1: (255, 0, 0),      # Red for class 1
-        2: (255,255, 0),    # Yellow for class 2
-    }
-
+    if len(np.unique(predicted_mask)) > 2:
+        predicted_colors = {
+            1: (0, 255, 0),      # Green for class 1
+            2: (0, 0, 255),    # Blue for class 2
+        }
+        gt_colors = {
+            1: (255, 0, 0),      # Red for class 1
+            2: (255,255, 0),    # Yellow for class 2
+        }
+    else:
+        predicted_colors = {
+            0: (0, 255, 0),      # Green for class 0
+            1: (0, 0, 255),    # Blue for class 1
+        }
+        gt_colors = {
+            0: (255, 0, 0),      # Red for class 0
+            1: (255,255, 0),    # Yellow for class
+        }
     # Normalize image for visualization
-    image_normalized = normalize_image(image)
+    image_normalized = convert_image_8bit(image)
     combined_image = image_normalized.copy()
 
     # Overlay masks for each class
@@ -94,24 +103,32 @@ def batch_plot_images_with_masks(images, predicted_masks, ground_truth_masks, ou
         output_path = f"{output_dir}/image_{idx}.png"
         plot_image_with_masks(image[0], predicted_mask, ground_truth_mask, output_path)
 
-def predict(model, dataset, mean=None, std=None, device='cpu', images_idicies=[0,1,2,4]):
+def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
+    """
+    Generate predictions for a set of images in a dataset.
+    Args:
+        model: Trained model.
+        dataset: Dataset object.
+        device: Device to use for prediction.
+        images_indicies: List of image indices to predict.
+    Returns:
+        Tuple of lists containing the original images, predicted masks, and ground truth
+    """
     model.eval()
     all_pred_masks = []
     all_gt_masks = []
     all_images = []
-    for idx in images_idicies:
+    for idx in images_indicies:
         while True:
-            image, mask = dataset[idx]  # (image: torch.Size([3, 224, 224]), mask: torch.Size([3, 224, 224]))
+            image, mask = dataset[idx]  # (image: torch.Size([3, 256, 256]), mask: torch.Size([3, 256, 256]))
             if 1 in mask:
                 break
-        input_image = image.to(device).unsqueeze(0) # torch.Size([1, 3, 224, 224])
-        if mean is not None and std is not None:
-            input_image = Utils.z_score_normalize(input_image, mean, std)
-        ground_truth_mask = mask.cpu().numpy()  # Shape: (224, 224)
+        input_image = image.to(device).unsqueeze(0) # torch.Size([1, 3, 256, 256])
+        ground_truth_mask = mask.cpu().numpy()  # Shape: (256, 256)
 
         with torch.no_grad():
-            output = model(input_image)  # Shape: [1, num_classes, 224, 224]
-            predicted_mask = torch.argmax(output.squeeze(0), dim=0).cpu().numpy()  # Shape: (224, 224)
+            output = model(input_image)  # Shape: [1, num_classes, 256, 256]
+            predicted_mask = torch.argmax(output.squeeze(0), dim=0).cpu().numpy()  # Shape: (256, 256)
         all_pred_masks.append(predicted_mask)
         all_gt_masks.append(ground_truth_mask)
         all_images.append(image.cpu().numpy())

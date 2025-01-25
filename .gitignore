@@ -162,8 +162,11 @@ cython_debug/
 #.idea/
 
 data/
+
 best_multiclass_unet_model.pth
 *.nd2
 *.pth
 *.hdf5
+dataset/2024_11_11
+dataset/2024_11_12
 dataset/2024_11_29
