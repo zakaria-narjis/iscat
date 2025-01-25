@@ -227,7 +227,7 @@ def main(args):
     test_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=test_indices,
-        classes=config['data']['test_dataset']['classes'],
+        classes=config['data']['train_dataset']['classes'],
         apply_augmentation=False,
         normalize=config['data']['train_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
