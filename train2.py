@@ -240,7 +240,7 @@ def main(args):
     if config['model']['type'] == 'U_Net':
         model = UNet(
             img_ch=in_channels,
-            out_ch=out_channels,
+            output_ch=out_channels,
         )
     elif config['model']['type'] == 'AttU_Net':
         model = AttU_Net(
