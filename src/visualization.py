@@ -89,7 +89,7 @@ def plot_image_with_masks(image, predicted_mask, ground_truth_mask, output_path=
     for class_label, color in predicted_colors.items():
         legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=2, label=f'Pred Class {class_label}'))
     for class_label, color in gt_colors.items():
-        legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=2, linestyle='dashed', label=f'GT Class {class_label}'))
+        legend_elements.append(plt.Line2D([0], [0], color=np.array(color) / 255, lw=2, label=f'GT Class {class_label}'))
     ax2.legend(handles=legend_elements, loc='lower right', fontsize='x-small')
 
     plt.tight_layout()
