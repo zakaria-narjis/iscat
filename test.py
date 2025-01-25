@@ -26,7 +26,7 @@ def test_model(model, test_loader, device, num_classes):
     # Metrics containers
     total_loss = 0
     dice_metric = DiceMetric(include_background=True, reduction="mean")
-    miou_metric = monai.metrics.MeanIoU(include_background=True, reduction="mean")
+    miou_metric = monai.metrics.MeanIoU(include_background=True,reduction="mean")
     
     # Class-specific metrics 
     class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes)}
@@ -48,7 +48,6 @@ def test_model(model, test_loader, device, num_classes):
             dice_metric(y_pred=pred_one_hot, y=target_one_hot)
             miou_metric(y_pred=pred_one_hot, y=target_one_hot)
             
-            # Convert to numpy for detailed metrics
             pred_np = pred_masks.cpu().numpy()
             masks_np = masks.cpu().numpy()
             
@@ -65,9 +64,13 @@ def test_model(model, test_loader, device, num_classes):
                 total_fp += fp
                 total_fn += fn
     
-    # Final metric computations
-    dice_scores = dice_metric.aggregate().cpu().numpy()[0]
-    miou_scores = miou_metric.aggregate().cpu().numpy()[0]
+    # Aggregate metrics correctly
+    dice_scores = dice_metric.aggregate().cpu().numpy()
+    miou_scores = miou_metric.aggregate().cpu().numpy()
+
+    # Reset metrics to clear accumulated values
+    dice_metric.reset()
+    miou_metric.reset()
     
     # Precision, Recall, F1 computations
     class_precision_recall = {}
@@ -95,17 +98,18 @@ def test_model(model, test_loader, device, num_classes):
     total_f1 = 2 * (total_precision * total_recall) / (total_precision + total_recall) if (total_precision + total_recall) > 0 else 0
     
     return {
-        'segmentation_scores': {
-            'mIoU': miou_scores.mean(),
-            'dice_scores': dice_scores,
-        },
-        'detection_scores': {
-            'total_precision': total_precision,
-            'total_recall': total_recall,
-            'total_f1': total_f1,
-            'total_tp': total_tp,
-            'total_fp': total_fp,
-            'total_fn': total_fn,
-            'class_metrics': class_precision_recall
-        }
+    'segmentation_scores': {
+        'mIoU': float(np.nanmean(miou_scores)),  
+        'dice_mean': float(np.nanmean(dice_scores)),
+        'dice_per_class': dice_scores.tolist(),
+    },
+    'detection_scores': {
+        'total_precision': total_precision,
+        'total_recall': total_recall,
+        'total_f1': total_f1,
+        'total_tp': total_tp,
+        'total_fp': total_fp,
+        'total_fn': total_fn,
+        'class_metrics': class_precision_recall
     }
+}

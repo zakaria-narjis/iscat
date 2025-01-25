@@ -91,7 +91,7 @@ class Trainer:
         pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
         # target_one_hot = torch.cat([1 - targets, targets], dim=1)
         target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
-        metric = self.miou_metric(pred_one_hot, target_one_hot) # [B, N, H, W]
+        metric = self.miou_metric(pred_one_hot, target_one_hot) 
         return metric.nanmean().item()
 
     def train_epoch(self, train_loader, epoch):
