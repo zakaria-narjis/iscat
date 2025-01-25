@@ -196,7 +196,7 @@ def main(args):
     with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
         yaml.dump(config, f)
     # Get data paths
-    if config['data']['data_type'] == 'brightfield':
+    if config['data']['data_type'] == 'Brightfield':
         hdf5_path = os.path.join('dataset', 'brightfield.hdf5')
     elif config['data']['data_type'] == 'Laser':
         hdf5_path = os.path.join('dataset', 'Laser.hdf5')
