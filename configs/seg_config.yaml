@@ -21,7 +21,7 @@ data:
 training:
   batch_size: 16
   num_epochs: 400
-  train_val_split: 0.7
+  train_split_size: 0.7
   device: "cuda:11"
   loss_type: "dice" # Options: crossentropy, dice, combined
   class_weights:
@@ -40,6 +40,7 @@ training:
   early_stopping:
     enabled: true
     patience: 20
+testing:
 
 model:
   type: "R2U_Net" #AttU_Net #R2AttU_Net #UNet #R2U_Net

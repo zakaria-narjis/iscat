@@ -204,8 +204,8 @@ def main(args):
         num_samples = f["image_patches"].shape[0]
     
     indices = np.arange(num_samples)
-    train_indices, temp_indices = train_test_split(indices, test_size=config['training']['train_val_split'], random_state=42)
-    valid_indices, test_indices = train_test_split(temp_indices, test_size=1/3, random_state=42)
+    train_indices, temp_indices = train_test_split(indices, test_size=1-config['training']['train_split_size'], random_state=config['seed'])
+    valid_indices, test_indices = train_test_split(temp_indices, test_size=1/3, random_state=config['seed'])   
     # Create datasets
     train_dataset = iScatDataset(
         hdf5_path=hdf5_path,
