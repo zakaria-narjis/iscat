@@ -45,9 +45,9 @@ class SegInference:
         Returns:
             torch.nn.Module: Trained model.
         """
-
-        model_name = config['model']
-        if model_name == 'UNet':
+        checkpoint = torch.load(model_path, weights_only=False)
+        model_name = config['model']['type']
+        if model_name == 'U_Net':
             model = UNet(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
         elif model_name == 'AttU_Net':
             model = AttU_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
@@ -55,8 +55,8 @@ class SegInference:
             model = R2AttU_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
         elif model_name == 'R2U_Net':
             model = R2U_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         model.to(device)
-        model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         return model
 
@@ -72,6 +72,7 @@ class SegInference:
         """
         x = Utils.extract_averaged_frames(x, num_frames=self.config['model']['in_channels']) # Extract averaged frames
         x = Utils.z_score_normalize(x, mean=x.mean(), std=x.std()) # Normalize the image
+        x = torch.Tensor(x)
         if x.dim() == 3:
             x = x.unsqueeze(0) # Add batch dimension       
         with torch.no_grad():
