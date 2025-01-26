@@ -19,7 +19,7 @@ data:
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 training:
-  batch_size: 16
+  batch_size: 32
   num_epochs: 400
   train_split_size: 0.7
   device: "cuda:11"
@@ -43,7 +43,7 @@ training:
 testing:
 
 model:
-  type: "R2U_Net" #AttU_Net #R2AttU_Net #UNet #R2U_Net
+  type: "AttU_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
   init_features: 64
 
 logging:
