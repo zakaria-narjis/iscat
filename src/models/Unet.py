@@ -136,5 +136,5 @@ class UNetBoundaryAware(nn.Module):
         d1 = self.Conv_1x1(d2)
         seg_mask = self.segmentation_head(d2)
         boundary_map = self.boundary_head(d2)
-        boundary_map.squeeze(1)
+        boundary_map=boundary_map.squeeze(1)
         return seg_mask, boundary_map
