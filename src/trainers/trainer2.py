@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from monai.losses import DiceLoss, DiceCELoss
+from monai.losses import DiceLoss, DiceCELoss, TverskyLoss
 from monai.metrics import MeanIoU
 from monai.networks.utils import one_hot
 from enum import Enum
@@ -74,7 +74,11 @@ class Trainer:
                 return nn.CrossEntropyLoss(weight=self.class_weights)
             elif self.loss_type == "dice":
                 self.logger.info("Using Dice Loss ")
-                return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean")
+                return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean",include_background=False)
+            elif self.loss_type == "tversky":
+                self.logger.info("Using Tversky Loss ")
+                return TverskyLoss(softmax=True, squared_pred=True, batch=True, reduction="mean", alpha=0.3, beta=0.7,include_background=False)
+
             else:
                 self.logger.info("Using Dice CrossEntropy Loss ")
                 return DiceCELoss(softmax=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
