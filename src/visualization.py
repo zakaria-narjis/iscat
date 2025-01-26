@@ -101,7 +101,7 @@ def batch_plot_images_with_masks(images, predicted_masks, ground_truth_masks, ou
         output_path = f"{output_dir}/image_{idx}.png"
         plot_image_with_masks(image[0], predicted_mask, ground_truth_mask, output_path)
 
-def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
+def predict_(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
     """
     Generate predictions for a set of images in a dataset.
     Args:
@@ -126,6 +126,37 @@ def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
 
         with torch.no_grad():
             output = model(input_image)  # Shape: [1, num_classes, 256, 256]
+            predicted_mask = torch.argmax(output.squeeze(0), dim=0).cpu().numpy()  # Shape: (256, 256)
+        all_pred_masks.append(predicted_mask)
+        all_gt_masks.append(ground_truth_mask)
+        all_images.append(image.cpu().numpy())
+    return all_images, all_pred_masks,all_gt_masks
+
+def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
+    """
+    Generate predictions for a set of images in a dataset.
+    Args:
+        model: Trained model.
+        dataset: Dataset object.
+        device: Device to use for prediction.
+        images_indicies: List of image indices to predict.
+    Returns:
+        Tuple of lists containing the original images, predicted masks, and ground truth
+    """
+    model.eval()
+    all_pred_masks = []
+    all_gt_masks = []
+    all_images = []
+    for idx in images_indicies:
+        while True:
+            image, mask = dataset[idx]  # (image: torch.Size([3, 256, 256]), mask: torch.Size([3, 256, 256]))
+            if 1 in mask:
+                break
+        input_image = image.to(device).unsqueeze(0) # torch.Size([1, 3, 256, 256])
+        ground_truth_mask = mask.cpu().numpy()  # Shape: (256, 256)
+
+        with torch.no_grad():
+            output,_ = model(input_image)  # Shape: [1, num_classes, 256, 256]
             predicted_mask = torch.argmax(output.squeeze(0), dim=0).cpu().numpy()  # Shape: (256, 256)
         all_pred_masks.append(predicted_mask)
         all_gt_masks.append(ground_truth_mask)
