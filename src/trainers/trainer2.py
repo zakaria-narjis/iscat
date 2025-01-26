@@ -87,8 +87,7 @@ class Trainer:
         seg_loss = self.loss(predictions, targets)
         
         if boundary_pred is not None and boundary_target is not None:
-            boundary_loss = nn.MSELoss()(boundary_pred, boundary_target) + \
-                            nn.L1Loss()(boundary_pred, boundary_target)
+            boundary_loss = nn.MSELoss()(boundary_pred, boundary_target)
             total_loss = seg_loss + 0.5 * boundary_loss
             return total_loss
         return seg_loss
