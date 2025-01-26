@@ -77,7 +77,7 @@ class Trainer:
                 return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean",include_background=False)
             elif self.loss_type == "tversky":
                 self.logger.info("Using Tversky Loss ")
-                return TverskyLoss(softmax=True, squared_pred=True, batch=True, reduction="mean", alpha=0.3, beta=0.7,include_background=False)
+                return TverskyLoss(softmax=True, batch=True, reduction="mean", alpha=0.3, beta=0.7,include_background=False)
 
             else:
                 self.logger.info("Using Dice CrossEntropy Loss ")
