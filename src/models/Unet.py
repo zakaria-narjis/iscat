@@ -19,3 +19,22 @@ class UNet(nn.Module):
     
     def forward(self, x):
         return self.model(x)
+
+class UNetBoundaryAware(nn.Module):
+    def __init__(self, img_ch=3, output_ch=1, init_features=64,pretrained=False):
+        super(UNetBoundaryAware, self).__init__()
+        # Define your encoder and decoder here
+        self.model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet', 
+                               in_channels=img_ch, 
+                               out_channels=1, 
+                               init_features=init_features, 
+                               pretrained=pretrained)
+        self.model.conv = nn.Identity()
+        self.segmentation_head = nn.Conv2d(init_features, output_ch, kernel_size=1)
+        self.boundary_head = nn.Conv2d(init_features, 1, kernel_size=1)
+
+    def forward(self, x):
+        x = self.model(x)
+        seg_mask = self.segmentation_head(x)
+        boundary_map = self.boundary_head(x)
+        return seg_mask, boundary_map

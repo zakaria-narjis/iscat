@@ -16,6 +16,7 @@ import numpy as np
 from src.visualization import predict, batch_plot_images_with_masks
 from sklearn.model_selection import train_test_split
 import h5py
+from src.models.Unet import UNetBoundaryAware
 from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net
 from src.metrics import batch_multiclass_metrics
 from test import test_model
@@ -260,6 +261,11 @@ def main(args):
             img_ch=in_channels,
             output_ch=out_channels
         )
+    elif config['model']['type'] == 'UNetBoundaryAware':
+        model = UNetBoundaryAware(
+            img_ch=in_channels,
+            output_ch=out_channels
+            )
     else:
         raise ValueError(f"Invalid model type: {config['model']['type']}")
     
