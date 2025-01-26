@@ -37,5 +37,5 @@ class UNetBoundaryAware(nn.Module):
         x = self.model(x)
         seg_mask = self.segmentation_head(x)
         boundary_map = self.boundary_head(x)
-        boundary_map = boundary_map.unsqueeze(1)
+        boundary_map = boundary_map.squeeze(1)
         return seg_mask, boundary_map
