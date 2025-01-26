@@ -165,7 +165,7 @@ class iScatDataset2(Dataset):
 
         if self.boundary_mask:
             boundary = self.generate_boundary_mask(mask.numpy())
-            boundary = torch.from_numpy(boundary.astype(np.uint8))
+            boundary = torch.from_numpy(boundary.astype(np.float32))
         
         if self.apply_augmentation:
             if random.random() > 0.5:
