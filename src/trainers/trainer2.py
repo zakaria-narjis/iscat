@@ -90,10 +90,10 @@ class Trainer:
         
         seg_loss = self.loss(predictions, targets)
         
-        if boundary_pred is not None and boundary_target is not None:
-            boundary_loss = nn.MSELoss()(boundary_pred, boundary_target)
-            total_loss = seg_loss + 0.1 * boundary_loss
-            return total_loss
+        # if boundary_pred is not None and boundary_target is not None:
+        #     boundary_loss = nn.MSELoss()(boundary_pred, boundary_target)
+        #     total_loss = seg_loss + 0.1 * boundary_loss
+        #     return total_loss
         return seg_loss
 
     def compute_metrics(self, predictions, targets):
