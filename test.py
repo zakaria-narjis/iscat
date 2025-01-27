@@ -8,7 +8,7 @@ from monai.metrics import DiceMetric, compute_iou
 from monai.networks.utils import one_hot
 from src.metrics import batch_multiclass_metrics
 
-def test_model_(model, test_loader, device, num_classes):
+def test_model(model, test_loader, device, num_classes):
     """
     Comprehensive test function for segmentation metrics
     
@@ -114,7 +114,7 @@ def test_model_(model, test_loader, device, num_classes):
     }
 }
 
-def test_model(model, test_loader, device, num_classes):
+def test_model_(model, test_loader, device, num_classes):
     """
     Comprehensive test function for segmentation metrics
     

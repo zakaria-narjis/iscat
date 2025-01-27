@@ -101,7 +101,7 @@ def batch_plot_images_with_masks(images, predicted_masks, ground_truth_masks, ou
         output_path = f"{output_dir}/image_{idx}.png"
         plot_image_with_masks(image[0], predicted_mask, ground_truth_mask, output_path)
 
-def predict_(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
+def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
     """
     Generate predictions for a set of images in a dataset.
     Args:
@@ -132,7 +132,7 @@ def predict_(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
         all_images.append(image.cpu().numpy())
     return all_images, all_pred_masks,all_gt_masks
 
-def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
+def predict_(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
     """
     Generate predictions for a set of images in a dataset.
     Args:

@@ -16,7 +16,7 @@ import numpy as np
 from src.visualization import predict, batch_plot_images_with_masks
 from sklearn.model_selection import train_test_split
 import h5py
-from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net
+from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net, U_Net
 from src.metrics import batch_multiclass_metrics
 from test import test_model
 import json
@@ -238,7 +238,7 @@ def main(args):
     )
 
     if config['model']['type'] == 'U_Net':
-        model = UNet(
+        model = U_Net(
             img_ch=in_channels,
             output_ch=out_channels,
         )
