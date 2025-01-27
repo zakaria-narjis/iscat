@@ -139,7 +139,7 @@ def test_model(model, test_loader, device, num_classes):
     total_tp = total_fp = total_fn = 0
     
     with torch.no_grad():
-        for images, masks in test_loader:
+        for images, masks,_ in test_loader:
             images, masks = images.to(device), masks.to(device)
             
             # Predictions

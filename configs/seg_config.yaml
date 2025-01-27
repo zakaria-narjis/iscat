@@ -23,7 +23,7 @@ training:
   num_epochs: 400
   train_split_size: 0.7
   device: "cuda:11"
-  loss_type: "dice" # Options: crossentropy, dice, combined
+  loss_type: "tversky" # Options: crossentropy, dice, combined, tversky
   class_weights:
     use: false
     calculation_method: "from_masks"
@@ -43,7 +43,7 @@ training:
 testing:
 
 model:
-  type: "AttU_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
+  type: "UNetBoundaryAware" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
   init_features: 64
 
 logging:

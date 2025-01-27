@@ -149,7 +149,7 @@ def predict(model, dataset, device='cpu', images_indicies=[0,1,2,4]):
     all_images = []
     for idx in images_indicies:
         while True:
-            image, mask = dataset[idx]  # (image: torch.Size([3, 256, 256]), mask: torch.Size([3, 256, 256]))
+            image, mask,_ = dataset[idx]  # (image: torch.Size([3, 256, 256]), mask: torch.Size([3, 256, 256]))
             if 1 in mask:
                 break
         input_image = image.to(device).unsqueeze(0) # torch.Size([1, 3, 256, 256])
