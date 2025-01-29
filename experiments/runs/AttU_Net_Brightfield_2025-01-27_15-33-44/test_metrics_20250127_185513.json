@@ -1,0 +1,35 @@
+{
+    "segmentation_scores": {
+        "mIoU": 0.7110980153083801,
+        "dice_mean": 0.7930946946144104,
+        "dice_per_class": [
+            0.7930946946144104
+        ]
+    },
+    "detection_scores": {
+        "total_precision": 0.7751703255109765,
+        "total_recall": 0.7624720774385704,
+        "total_f1": 0.7687687687687687,
+        "total_tp": 3072,
+        "total_fp": 891,
+        "total_fn": 957,
+        "class_metrics": {
+            "0": {
+                "precision": 0,
+                "recall": 0,
+                "f1": 0,
+                "tp": 0,
+                "fp": 0,
+                "fn": 0
+            },
+            "1": {
+                "precision": 0.7751703255109765,
+                "recall": 0.7624720774385704,
+                "f1": 0.7687687687687687,
+                "tp": 3072,
+                "fp": 891,
+                "fn": 957
+            }
+        }
+    }
+}
