@@ -25,8 +25,8 @@ def test_model(model, test_loader, device, num_classes):
     
     # Metrics containers
     total_loss = 0
-    dice_metric = DiceMetric(include_background=False, reduction="mean")
-    miou_metric = monai.metrics.MeanIoU(include_background=False,reduction="mean")
+    dice_metric = DiceMetric(include_background=True, reduction="mean")
+    miou_metric = monai.metrics.MeanIoU(include_background=True,reduction="mean")
     
     # Class-specific metrics 
     if num_classes == 1:

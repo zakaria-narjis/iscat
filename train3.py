@@ -261,7 +261,9 @@ def main(args):
         raise ValueError(f"Invalid model type: {config['model']['type']}")
     
     if config['training']['class_weights']['use']:
-        class_weights=Utils.calculate_class_weights_from_masks(Utils.load_masks_from_hdf5(hdf5_path)).to(device)
+        class_weights=Utils.calculate_class_weights_from_masks(Utils.load_masks_from_hdf5(hdf5_path,indices=config['data']['train_dataset']['classes'])).to(device)
+        if num_classes == 1:
+            class_weights = class_weights[1]/class_weights[0]
     else:
         class_weights=None
     # Initialize trainer

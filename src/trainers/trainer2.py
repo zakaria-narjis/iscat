@@ -67,7 +67,7 @@ class Trainer:
             elif self.loss_type == "dice":
                 return DiceLoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
             elif self.loss_type == "dicece":
-                return DiceCELoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
+                return DiceCELoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
             elif self.loss_type == "tversky":
                 self.logger.info("Using Tversky Loss ")
                 return TverskyLoss(sigmoid=True, 
@@ -75,7 +75,7 @@ class Trainer:
                                    reduction="mean", 
                                    alpha=self.config['loss']['parameters']['alpha'], 
                                    beta=self.config['loss']['parameters']['beta'],
-                                   include_background=False)
+                                   )
             else:
                 raise ValueError(f"Invalid loss type: {self.loss_type}")
         else:
@@ -117,10 +117,12 @@ class Trainer:
         if self.num_classes>1:
             pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
             target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
-            metric = self.miou_metric(pred_one_hot, target_one_hot) 
         else:
             pred_one_hot = torch.sigmoid(predictions) > 0.5 # [B, 1, H, W]
-            metric = self.miou_metric(pred_one_hot, targets) 
+            pred_one_hot = one_hot(pred_one_hot, num_classes=2)
+            target_one_hot = one_hot(targets, num_classes=2) 
+
+        metric = self.miou_metric(pred_one_hot, target_one_hot) 
         return metric.nanmean().item()
 
     def train_epoch(self, train_loader, epoch):
