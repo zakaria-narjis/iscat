@@ -57,7 +57,7 @@ def test_model(model, test_loader, device, num_classes):
             
             pred_np = pred_masks.cpu().numpy()
             masks_np = masks.cpu().numpy()
-            
+            print(pred_np.shape, masks_np.shape)
             # Detailed class metrics
             batch_class_metrics = batch_multiclass_metrics(pred_np, masks_np)
             print(batch_class_metrics)
