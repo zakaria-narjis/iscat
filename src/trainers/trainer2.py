@@ -36,7 +36,7 @@ class Trainer:
         self.num_classes = config['num_classes']
         self.model = model.to(device)
         self.device = device
-        self.loss_type = config['loss_type']
+        self.loss_type = config['loss']['loss_type']
         self.class_weights = class_weights
         self.config = config
         self.earlystoping_patience = config['early_stopping']['patience']
