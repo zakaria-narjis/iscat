@@ -3,8 +3,8 @@ import argparse
 import yaml
 import torch
 from torch.utils.data import DataLoader
-from src.data_processing.dataset import iScatDataset2
-from src.trainers.trainer2 import Trainer
+from src.data_processing.dataset import iScatDataset
+from src.trainers import Trainer
 from src.models.Unet import UNet
 from src.data_processing.utils import Utils 
 import re
@@ -16,8 +16,7 @@ import numpy as np
 from src.visualization import predict, batch_plot_images_with_masks
 from sklearn.model_selection import train_test_split
 import h5py
-from src.models.Unet import UNetBoundaryAware
-from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net
+from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net, U_Net
 from src.metrics import batch_multiclass_metrics
 from test import test_model
 import json
@@ -187,7 +186,7 @@ def main(args):
     if config['data']['multi_class']:
         num_classes = len(config['data']['train_dataset']['classes']) + 1 
     else:        
-        num_classes = 2
+        num_classes = 1
     in_channels = config['data']['z_chunk_size']
     out_channels = num_classes
     config['training']['num_classes'] = num_classes
@@ -208,33 +207,30 @@ def main(args):
     train_indices, temp_indices = train_test_split(indices, test_size=1-config['training']['train_split_size'], random_state=config['seed'])
     valid_indices, test_indices = train_test_split(temp_indices, test_size=1/3, random_state=config['seed'])   
     # Create datasets
-    train_dataset = iScatDataset2(
+    train_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=train_indices,
         classes=config['data']['train_dataset']['classes'],
         apply_augmentation=config['data']['train_dataset']['apply_augmentation'],
         normalize=config['data']['train_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
-        boundary_mask=True
     )
 
-    valid_dataset = iScatDataset2(
+    valid_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=valid_indices,
         classes=config['data']['valid_dataset']['classes'],
         apply_augmentation=config['data']['valid_dataset']['apply_augmentation'],  
         normalize=config['data']['valid_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
-        boundary_mask=True
     )
-    test_dataset = iScatDataset2(
+    test_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=test_indices,
         classes=config['data']['train_dataset']['classes'],
         apply_augmentation=False,
         normalize=config['data']['train_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
-        boundary_mask=True
     )
     # Create dataloaders
     train_loader, val_loader ,test_loader= create_dataloaders(
@@ -242,7 +238,7 @@ def main(args):
     )
 
     if config['model']['type'] == 'U_Net':
-        model = UNet(
+        model = U_Net(
             img_ch=in_channels,
             output_ch=out_channels,
         )
@@ -261,11 +257,6 @@ def main(args):
             img_ch=in_channels,
             output_ch=out_channels
         )
-    elif config['model']['type'] == 'UNetBoundaryAware':
-        model = UNetBoundaryAware(
-            img_ch=in_channels,
-            output_ch=out_channels
-            )
     else:
         raise ValueError(f"Invalid model type: {config['model']['type']}")
     

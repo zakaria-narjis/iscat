@@ -65,9 +65,19 @@ class Trainer:
             if self.loss_type == "crossentropy":
                 return nn.BCEWithLogitsLoss()
             elif self.loss_type == "dice":
-                return DiceLoss(sigmoid=True, squared_pred=False, batch=True, reduction="mean")
+                return DiceLoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
+            elif self.loss_type == "dicece":
+                return DiceCELoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
+            elif self.loss_type == "tversky":
+                self.logger.info("Using Tversky Loss ")
+                return TverskyLoss(sigmoid=True, 
+                                   batch=True, 
+                                   reduction="mean", 
+                                   alpha=self.config['loss']['parameters']['alpha'], 
+                                   beta=self.config['loss']['parameters']['beta'],
+                                   include_background=False)
             else:
-                return DiceCELoss(sigmoid=True, squared_pred=False, batch=True, reduction="mean")
+                raise ValueError(f"Invalid loss type: {self.loss_type}")
         else:
             if self.loss_type == "crossentropy":
                 self.logger.info("Using CrossEntropy Loss ")
@@ -77,32 +87,40 @@ class Trainer:
                 return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean",include_background=False)
             elif self.loss_type == "tversky":
                 self.logger.info("Using Tversky Loss ")
-                return TverskyLoss(softmax=True, batch=True, reduction="mean", alpha=0.3, beta=0.7,include_background=False)
-
-            else:
+                return TverskyLoss(softmax=True, 
+                                   batch=True, 
+                                   reduction="mean", 
+                                   alpha=self.config['loss']['parameters']['alpha'], 
+                                   beta=self.config['loss']['parameters']['beta'],
+                                   include_background=False)
+            elif self.loss_type == "dicece":
                 self.logger.info("Using Dice CrossEntropy Loss ")
                 return DiceCELoss(softmax=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
-
-    def compute_loss(self, predictions, targets, boundary_pred=None, boundary_target=None):
+            else:
+                raise ValueError(f"Invalid loss type: {self.loss_type}")
+    def compute_loss(self, predictions, targets):
+        """
+        Compute loss given model predictions and target masks.
+        Args:
+            predictions (torch.Tensor): Model predictions. Shape: [B, N, H, W].
+            targets (torch.Tensor): Target masks. Shape: [B, 1, H, W].
+        """
         if len(targets.shape) == 3:
-            targets = targets.unsqueeze(1)
-        targets = one_hot(targets, num_classes=self.num_classes, dim=1)
-        
-        seg_loss = self.loss(predictions, targets)
-        
-        # if boundary_pred is not None and boundary_target is not None:
-        #     boundary_loss = nn.MSELoss()(boundary_pred, boundary_target)
-        #     total_loss = seg_loss + 0.1 * boundary_loss
-        #     return total_loss
-        return seg_loss
+            targets =  targets.unsqueeze(1)     
+        if self.num_classes>1:
+            targets = one_hot(targets, num_classes=self.num_classes, dim=1)
+        return self.loss(predictions, targets)
 
     def compute_metrics(self, predictions, targets):
         if len(targets.shape) == 3:
-            targets = targets.unsqueeze(1) # [B, 1, H, W]
-        pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
-        # target_one_hot = torch.cat([1 - targets, targets], dim=1)
-        target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
-        metric = self.miou_metric(pred_one_hot, target_one_hot) 
+            targets =  targets.unsqueeze(1)     
+        if self.num_classes>1:
+            pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
+            target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
+            metric = self.miou_metric(pred_one_hot, target_one_hot) 
+        else:
+            pred_one_hot = torch.sigmoid(predictions) > 0.5 # [B, 1, H, W]
+            metric = self.miou_metric(pred_one_hot, targets) 
         return metric.nanmean().item()
 
     def train_epoch(self, train_loader, epoch):
@@ -110,18 +128,20 @@ class Trainer:
         total_loss = 0.0
         total_miou = 0.0
 
-        for batch_idx, (images, masks, boundaries) in enumerate(train_loader):
-            images, masks, boundaries = images.to(self.device), masks.to(self.device), boundaries.to(self.device)
-            
+        for batch_idx, (images, masks) in enumerate(train_loader):
+            images, masks = images.to(self.device), masks.to(self.device)    
+            if len(masks.shape) == 3:
+                 masks =  masks.unsqueeze(1)        
+            # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
-            seg_pred, boundary_pred = self.model(images)
-
-            loss = self.compute_loss(seg_pred, masks, boundary_pred, boundaries)
+            predictions = self.model(images)
+            loss = self.compute_loss(predictions, masks)
             loss.backward()
             self.optimizer.step()
-
+            
+            # Loss and mIoU can stay on GPU if they're simple operations
             total_loss += loss.item()
-            total_miou += self.compute_metrics(seg_pred, masks)
+            total_miou += self.compute_metrics(predictions, masks)
             
 
         # Compute final metrics once at the end
@@ -136,27 +156,26 @@ class Trainer:
         self.model.eval()
         total_loss = 0.0
         total_miou = 0.0
-        total_boundary_mse = 0.0
+        
         # Initialize dictionaries for class-specific metrics
         class_metrics = {}
         # Initialize total particle metric counters
         total_tp = total_fp = total_fn = 0
         
-        for images, masks, boundaries in val_loader:
-            images, masks, boundaries = images.to(self.device), masks.to(self.device), boundaries.to(self.device)
+        for images, masks in val_loader:
+            images, masks = images.to(self.device), masks.to(self.device)
+            # Forward pass on GPU
+            predictions = self.model(images)
             
-            seg_pred, boundary_pred = self.model(images)
-            loss = self.compute_loss(seg_pred, masks, boundary_pred, boundaries)
-
-            total_loss += loss.item()
-            total_miou += self.compute_metrics(seg_pred, masks)
-            
-            # Compute boundary evaluation metrics (e.g., MSE)
-            boundary_mse = nn.MSELoss()(boundary_pred, boundaries).item()
-            total_boundary_mse += boundary_mse
+            # Compute loss and mIoU on GPU
+            total_loss += self.compute_loss(predictions, masks).item()
+            total_miou += self.compute_metrics(predictions, masks)
             
             # Convert predictions and masks to CPU numpy arrays
-            pred_masks = torch.argmax(seg_pred, dim=1).cpu().numpy()
+            if self.num_classes == 1:
+                pred_masks = torch.sigmoid(predictions).cpu().numpy() > 0.5
+            else:
+                pred_masks = torch.argmax(predictions, dim=1).cpu().numpy()
             gt_masks = masks.cpu().numpy()
             
             # Process entire batch at once
@@ -179,7 +198,6 @@ class Trainer:
         n_batches = len(val_loader)
         avg_loss = total_loss / n_batches
         avg_miou = total_miou / n_batches
-        avg_boundary_mse = total_boundary_mse / n_batches
         
         # Compute class-specific precision and recall
         class_precision_recall = {}
@@ -201,14 +219,14 @@ class Trainer:
         total_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
         total_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
         total_f1 = 2 * (total_precision * total_recall) / (total_precision + total_recall) if (total_precision + total_recall) > 0 else 0
-        return avg_loss, avg_boundary_mse, avg_miou, total_precision, total_recall, total_f1, class_precision_recall
+        return avg_loss, avg_miou, total_precision, total_recall, total_f1, class_precision_recall
 
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float('inf')
         no_improve = 0
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             train_loss, train_miou = self.train_epoch(train_loader, epoch)
-            val_loss, avg_boundary_mse, val_miou, val_precision, val_recall, val_f1, class_metrics = self.validate(val_loader)
+            val_loss, val_miou, val_precision, val_recall, val_f1, class_metrics = self.validate(val_loader)
             
             self.scheduler.step(val_loss)
             
@@ -217,7 +235,6 @@ class Trainer:
                 self.writer.add_scalar('Train/Loss', train_loss, epoch)
                 self.writer.add_scalar('Train/mIoU', train_miou, epoch)
                 self.writer.add_scalar('Validation/Loss', val_loss, epoch)
-                self.writer.add_scalar('Validation/Boundary_MSE', avg_boundary_mse, epoch)
                 self.writer.add_scalar('Validation/mIoU', val_miou, epoch)
                 self.writer.add_scalar('Learning Rate', self.optimizer.param_groups[0]['lr'], epoch)
                 
@@ -253,7 +270,6 @@ class Trainer:
                             f"Train Loss: {train_loss:.4f}, "
                             f"Train mIoU: {train_miou:.4f}, "
                             f"Val Loss: {val_loss:.4f}, "
-                            f"Val Boundary MSE: {avg_boundary_mse:.4f}, "
                             f"Val mIoU: {val_miou:.4f}, "
                             f"LR: {self.optimizer.param_groups[0]['lr']:.2e}")
             
