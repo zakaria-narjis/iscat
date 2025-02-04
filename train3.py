@@ -4,7 +4,7 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from src.data_processing.dataset import iScatDataset
-from src.trainers import Trainer
+from src.trainers.trainer2 import Trainer
 from src.models.Unet import UNet
 from src.data_processing.utils import Utils 
 import re
