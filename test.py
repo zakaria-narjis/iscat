@@ -29,7 +29,10 @@ def test_model(model, test_loader, device, num_classes):
     miou_metric = monai.metrics.MeanIoU(include_background=False,reduction="mean")
     
     # Class-specific metrics 
-    class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes)}
+    if num_classes == 1:
+        class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes)}
+    else:
+        class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes+1)}
     total_tp = total_fp = total_fn = 0
     
     with torch.no_grad():
