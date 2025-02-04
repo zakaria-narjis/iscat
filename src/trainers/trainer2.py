@@ -174,7 +174,7 @@ class Trainer:
             # Convert predictions and masks to CPU numpy arrays
             if self.num_classes == 1:
                 pred_masks = torch.sigmoid(predictions).cpu().numpy() > 0.5 # [B, 1, H, W]
-                pred_masks = pred_masks.squeeze(1)
+                pred_masks = pred_masks.squeeze(1) # [B, H, W]
             else:
                 pred_masks = torch.argmax(predictions, dim=1).cpu().numpy() # [B, H, W]
             gt_masks = masks.cpu().numpy()

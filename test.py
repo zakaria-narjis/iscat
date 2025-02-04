@@ -43,9 +43,9 @@ def test_model(model, test_loader, device, num_classes):
             predictions = model(images)
             if predictions.shape[1] == 1:
                 pred_masks = torch.sigmoid(predictions) > 0.5 # Shape: [batch_size, 1, height, width]
-                pred_masks = pred_masks.squeeze(1) # Shape: [batch_size, height, width]
-                pred_one_hot = one_hot(pred_masks.unsqueeze(1), num_classes=2)
-                target_one_hot = one_hot(masks.unsqueeze(1), num_classes=2)    
+                pred_one_hot = one_hot(pred_masks, num_classes=2)
+                target_one_hot = one_hot(masks.unsqueeze(1), num_classes=2)  
+                pred_masks = pred_masks.squeeze(1) 
             else:
                 pred_masks = torch.argmax(predictions, dim=1) # Shape: [batch_size, height, width]
                 pred_one_hot = one_hot(pred_masks.unsqueeze(1), num_classes=num_classes)
@@ -60,7 +60,7 @@ def test_model(model, test_loader, device, num_classes):
             
             # Detailed class metrics
             batch_class_metrics = batch_multiclass_metrics(pred_np, masks_np)
-            
+            print(batch_class_metrics)
             # Aggregate metrics
             for class_id, (tp, fp, fn) in batch_class_metrics.items():
                 class_metrics[class_id]['tp'] += tp
