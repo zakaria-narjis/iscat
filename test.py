@@ -30,9 +30,9 @@ def test_model(model, test_loader, device, num_classes):
     
     # Class-specific metrics 
     if num_classes == 1:
-        class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes)}
-    else:
         class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes+1)}
+    else:
+        class_metrics = {i: {'tp': 0, 'fp': 0, 'fn': 0} for i in range(num_classes)}
     total_tp = total_fp = total_fn = 0
     
     with torch.no_grad():
@@ -57,10 +57,8 @@ def test_model(model, test_loader, device, num_classes):
             
             pred_np = pred_masks.cpu().numpy()
             masks_np = masks.cpu().numpy()
-            print(pred_np.shape, masks_np.shape)
             # Detailed class metrics
             batch_class_metrics = batch_multiclass_metrics(pred_np, masks_np)
-            print(batch_class_metrics)
             # Aggregate metrics
             for class_id, (tp, fp, fn) in batch_class_metrics.items():
                 class_metrics[class_id]['tp'] += tp
