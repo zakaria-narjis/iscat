@@ -41,14 +41,13 @@ def test_model(model, test_loader, device, num_classes):
             if predictions.shape[1] == 1:
                 pred_masks = torch.sigmoid(predictions) > 0.5 # Shape: [batch_size, 1, height, width]
                 pred_masks = pred_masks.squeeze(1) # Shape: [batch_size, height, width]
+                pred_one_hot = one_hot(pred_masks.unsqueeze(1), num_classes=2)
+                target_one_hot = one_hot(masks.unsqueeze(1), num_classes=2)    
             else:
                 pred_masks = torch.argmax(predictions, dim=1) # Shape: [batch_size, height, width]
-            
-            # One-hot encoding for metrics
-            
-            pred_one_hot = one_hot(pred_masks.unsqueeze(1), num_classes=num_classes)
-            target_one_hot = one_hot(masks.unsqueeze(1), num_classes=num_classes)
-            
+                pred_one_hot = one_hot(pred_masks.unsqueeze(1), num_classes=num_classes)
+                target_one_hot = one_hot(masks.unsqueeze(1), num_classes=num_classes)           
+                    
             # Compute metrics
             dice_metric(y_pred=pred_one_hot, y=target_one_hot)
             miou_metric(y_pred=pred_one_hot, y=target_one_hot)
