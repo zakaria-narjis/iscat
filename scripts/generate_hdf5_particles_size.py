@@ -28,7 +28,7 @@ def get_nd2_and_csv_paths(base_path, option):
         'Captured TRITC.csv': 2,
     }
     class_idx_2024_11_29 = {
-        'Captured Cy5.csv': 2,
+        'Captured Cy5.csv': 3,
         'Captured FITC.csv': 0,
         'Captured TRITC.csv': 1,
     }
@@ -44,7 +44,7 @@ def get_nd2_and_csv_paths(base_path, option):
                             csv_path = os.path.join(target_folder, mask_name)
                             if os.path.exists(csv_path):
                                 if '2024_11_29' in Path(root).parts:
-                                    print('Found 2024_11_29, remapping classes Cy5 -> 2, FITC -> 0, TRITC -> 1')
+                                    print('Found 2024_11_29, remapping classes Cy5 -> 3, FITC -> 0, TRITC -> 1')
                                     csv_paths.append((csv_path, class_idx_2024_11_29[mask_name]))
                                 else:
                                     csv_paths.append((csv_path, class_idx[mask_name]))
