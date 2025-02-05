@@ -22,7 +22,16 @@ def get_nd2_and_csv_paths(base_path, option):
     
     file_pairs = []
     mask_names = ['Captured Cy5.csv', 'Captured FITC.csv', 'Captured TRITC.csv']
-    
+    class_idx ={
+        'Captured Cy5.csv': 0,
+        'Captured FITC.csv': 1,
+        'Captured TRITC.csv': 2,
+    }
+    class_idx_2024_11_29 = {
+        'Captured Cy5.csv': 2,
+        'Captured FITC.csv': 0,
+        'Captured TRITC.csv': 1,
+    }
     for root, _, files in os.walk(base_path):
         if 'Metasurface' in Path(root).parts:
             target_folder = os.path.join(root, option)
@@ -34,7 +43,13 @@ def get_nd2_and_csv_paths(base_path, option):
                         for mask_name in mask_names:
                             csv_path = os.path.join(target_folder, mask_name)
                             if os.path.exists(csv_path):
-                                csv_paths.append((csv_path, len(csv_paths)))  # Include class index
+                                if '2024_11_29' in Path(root).parts:
+                                    print('Found 2024_11_29, remapping classes Cy5 -> 2, FITC -> 0, TRITC -> 1')
+                                    csv_paths.append((csv_path, class_idx_2024_11_29[mask_name]))
+                                else:
+                                    csv_paths.append((csv_path, class_idx[mask_name]))
+                            else:
+                                raise FileNotFoundError(f"CSV file not found: {csv_path}")
                         if csv_paths:
                             file_pairs.append((nd2_path, csv_paths))
     
@@ -188,7 +203,7 @@ def process_dataset(file_pairs, output_path, averaging_axis='x', target_size=16,
             # Save metadata
             hf.attrs['averaging_method'] = 'radial' if use_radial else f'axis_{averaging_axis}'
             hf.attrs['target_size'] = target_size
-            hf.attrs['class_info'] = 'Class 0: Cy5 (80nm), Class 1: FITC (300nm), Class 2: TRITC (1300nm)'
+            hf.attrs['class_info'] = 'Class 0: Cy5 (80nm), Class 1: FITC (300nm), Class 2: TRITC (1300nm), Class 3: (600nm)'
 
 if __name__ == "__main__":
     import argparse
@@ -210,7 +225,7 @@ if __name__ == "__main__":
     data_paths = [
         os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02'),
         os.path.join('data', '2024_11_12', 'Metasurface', 'Chip_01'),
-        # os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
+        os.path.join('data', '2024_11_29', 'Metasurface', 'Chip_02')
     ]
     
     # Collect all file pairs
