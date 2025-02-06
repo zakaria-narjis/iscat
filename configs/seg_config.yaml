@@ -19,10 +19,10 @@ data:
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 training:
-  batch_size: 32
+  batch_size: 16
   num_epochs: 400
   train_split_size: 0.7
-  device: "cuda:11"
+  device: "cuda:14"
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, combined, tversky
     parameters:
@@ -35,7 +35,7 @@ training:
   optimizer:
     type: "Adam"
     parameters:
-      lr: 1e-4
+      lr: 5e-5 #1e-4
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
@@ -48,7 +48,7 @@ training:
 testing:
 
 model:
-  type: "U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
+  type: "R2U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
   init_features: 64
 
 logging:
