@@ -22,12 +22,12 @@ training:
   batch_size: 32
   num_epochs: 400
   train_split_size: 0.7
-  device: "cuda:14"
+  device: "cuda:11"
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, combined, tversky
     parameters:
-      alpha: 0.3
-      beta: 0.7
+      alpha: 0.5
+      beta: 0.5
       gamma: 1.0
   class_weights:
     use: false
