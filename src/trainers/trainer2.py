@@ -67,7 +67,14 @@ class Trainer:
             elif self.loss_type == "dice":
                 return DiceLoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
             elif self.loss_type == "dicece":
-                return DiceCELoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
+                return DiceCELoss(sigmoid=True, 
+                                  squared_pred=True, 
+                                  batch=True, 
+                                  reduction="mean", 
+                                  weight=self.class_weights,
+                                  lambda_ce=self.config['loss']['parameters']['lambda_ce'],
+                                  lambda_dice=self.config['loss']['parameters']['lambda_dice']
+                                 )
             elif self.loss_type == "tversky":
                 self.logger.info("Using Tversky Loss ")
                 return TverskyLoss(sigmoid=True, 

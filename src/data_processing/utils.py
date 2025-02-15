@@ -210,6 +210,7 @@ class Utils:
         Returns:
             torch.Tensor: Class weights of shape (C,), where C is the number of classes.
         """
+        masks = torch.Tensor(masks)
         num_classes = int(masks.max().item() + 1)  # Assume classes are from 0 to C-1
         class_counts = torch.zeros(num_classes, dtype=torch.float, device=masks.device)
         flattened_masks = masks.reshape(-1)

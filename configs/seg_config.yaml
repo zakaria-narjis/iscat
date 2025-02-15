@@ -24,13 +24,15 @@ training:
   train_split_size: 0.7
   device: "cuda:11"
   loss:
-    loss_type: "tversky" # Options: crossentropy, dice, combined, tversky
+    loss_type: "dicece" # Options: crossentropy, dice, dicece, tversky
     parameters:
       alpha: 0.5
       beta: 0.5
       gamma: 1.0
+      lambda_ce: 0.1
+      lambda_dice: 1.0
   class_weights:
-    use: false
+    use: True
     calculation_method: "from_masks"
   optimizer:
     type: "Adam"
