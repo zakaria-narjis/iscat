@@ -216,11 +216,16 @@ if __name__ == "__main__":
                        default='x', help="Axis for averaging")
     parser.add_argument("--target_size", type=int, default=16,
                        help="Target size for first dimension")
-    parser.add_argument("--use_radial", action="store_true",
+    parser.add_argument("--use_radial", type=bool,default=False,
                        help="Use radial averaging instead of axis averaging")
     
     args = parser.parse_args()
-    
+    if args.use_radial:
+        print('using radial avg')
+        avg_type = "radial"
+    else:
+        print(f"using {args.averaging_axis} axis")
+        avg_type = args.averaging_axis
     # Define data paths
     data_paths = [
         os.path.join('data', '2024_11_11', 'Metasurface', 'Chip_02'),
@@ -232,7 +237,7 @@ if __name__ == "__main__":
     all_file_pairs = []
     for data_path in data_paths:
         all_file_pairs.extend(get_nd2_and_csv_paths(data_path, args.datatype))
-    output_hdf5_path = os.path.join(args.output_path, f"{args.datatype.lower()}_particles.hdf5")
+    output_hdf5_path = os.path.join(args.output_path, f"{args.datatype.lower()}_particles_{avg_type}.hdf5")
     # Process dataset
     process_dataset(
         all_file_pairs,
