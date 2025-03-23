@@ -1,0 +1,70 @@
+seed: 0
+data:
+  image_size: 256
+  z_chunk_size : 32  # Number of chunks to divide the z-stack into for averaging
+  fluo_masks_indices: [0] # classes used for training
+  seg_method: "comdet"
+  data_type: "Brightfield" # Brightfield/Laser
+  normalize: "zscore" # Options: zscore, minmax, none
+  multi_class: False
+
+  train_dataset:
+    apply_augmentation: true
+    normalize: ${data.normalize} # Do not change
+    classes: ${data.fluo_masks_indices} # Do not change
+    multi_class: ${data.multi_class}  # Do not change
+  valid_dataset:
+    apply_augmentation: false
+    normalize: ${data.normalize}  # Do not change
+    classes: ${data.fluo_masks_indices} # Do not change
+    multi_class: ${data.multi_class}  # Do not change
+training:
+
+  pretrained: false
+  pretrained_model_path: "path/to/pretrained/best_model.pth"
+  fine_tuning:
+    enabled: false
+    freeze_encoder: true
+    encoder_lr_factor: 0.1  # Encoder learning rate = base_lr * factor
+    progressive_unfreeze:
+      enabled: false
+      epochs_per_layer: 5  # Number of epochs before unfreezing next layer
+
+  batch_size: 32
+  num_epochs: 400
+  train_split_size: 0.7
+  device: "cuda:0"
+  loss:
+    loss_type: "dicece" # Options: crossentropy, dice, dicece, tversky
+    parameters:
+      alpha: 0.5
+      beta: 0.5
+      gamma: 1.0
+      lambda_ce: 0.1
+      lambda_dice: 1.0
+  class_weights:
+    use: True
+    calculation_method: "from_masks"
+  optimizer:
+    type: "Adam"
+    parameters:
+      lr: 1e-4 #1e-4
+  scheduler:
+    type: "ReduceLROnPlateau"
+    parameters:
+      mode: "min"
+      factor: 0.1
+      patience: 8
+  early_stopping:
+    enabled: true
+    patience: 20
+testing:
+
+model:
+  type: "U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
+  init_features: 64
+
+logging:
+  tensorboard:
+    log_dir: "experiments/runs"
+
