@@ -7,6 +7,7 @@ data:
   data_type: "Brightfield" # Brightfield/Laser
   normalize: "zscore" # Options: zscore, minmax, none
   multi_class: False
+  dataset_folder_path: "/data_ssd2/iscat_data"
 
   train_dataset:
     apply_augmentation: true
@@ -20,7 +21,7 @@ data:
     multi_class: ${data.multi_class}  # Do not change
 training:
 
-  pretrained: false
+  pretrained: False
   pretrained_model_path: "path/to/pretrained/best_model.pth"
   fine_tuning:
     enabled: false
@@ -35,10 +36,10 @@ training:
   train_split_size: 0.7
   device: "cuda:0"
   loss:
-    loss_type: "dicece" # Options: crossentropy, dice, dicece, tversky
+    loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
-      alpha: 0.5
-      beta: 0.5
+      alpha: 0.7
+      beta: 0.3
       gamma: 1.0
       lambda_ce: 0.1
       lambda_dice: 1.0

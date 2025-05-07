@@ -243,9 +243,9 @@ def main(args):
         yaml.dump(config, f)
     # Get data paths
     if config['data']['data_type'] == 'Brightfield':
-        hdf5_path = os.path.join('dataset', 'EV_brightfield.hdf5')
+        hdf5_path = os.path.join(config["data"]["dataset_folder_path"], 'EV_brightfield.hdf5')
     elif config['data']['data_type'] == 'Laser':
-        hdf5_path = os.path.join('dataset', 'EV_Laser.hdf5')
+        hdf5_path = os.path.join(config["data"]["dataset_folder_path"], 'EV_Laser.hdf5')
     with h5py.File(hdf5_path, "r") as f:
         num_samples = f["image_patches"].shape[0]
     
