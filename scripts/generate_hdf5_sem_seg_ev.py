@@ -66,7 +66,7 @@ def create_mask_from_csv(csv_path, image_shape):
     return label_canvas
 
 
-def tif_to_hdf5(data_path, output_hdf5_path, patch_size=(256, 256), overlap=0):
+def tif_to_hdf5(data_path, output_hdf5_path, patch_size=(256, 256), overlap=0,datatype='Brightfield'):
     """
     Load TIF files, extract image patches, create elliptical masks from CSV files, 
     and save them into an HDF5 file.
@@ -76,23 +76,29 @@ def tif_to_hdf5(data_path, output_hdf5_path, patch_size=(256, 256), overlap=0):
         output_hdf5_path (str): Path to the output HDF5 file.
         patch_size (tuple): Size of the patches (height, width).
         overlap (int): Overlap between patches in pixels.
-
+        datatype (str): Type of data (e.g., "Brightfield" or "Laser").
     Returns:
         None
     """
     patch_height, patch_width = patch_size
     
-    # Find all TIF files in the data path
-    all_tif_files = sorted(glob.glob(os.path.join(data_path, "*.tif")))
-    
+    # Find all TIF for the specified datatype and not the one the fluorescence images (not the one with the FITC)
+    if datatype == 'Brightfield':
+        all_tif_files = sorted(glob.glob(os.path.join(data_path, "*_Brightfield.tif")))
+    elif datatype == 'Laser':
+        all_tif_files = sorted(glob.glob(os.path.join(data_path, "*_Laser.tif")))
+    else:
+        raise ValueError("Invalid datatype. Choose either 'Brightfield' or 'Laser'.")
+    print(f"Found {len(all_tif_files)} TIF files for {datatype}.")
+    print(f"All TIF files: {all_tif_files}")
     # Filter to only include files matching the pattern (##.tif)
     tif_files = []
-    for file_path in all_tif_files:
-        file_name = os.path.basename(file_path)
-        # Check if the filename matches the pattern (digits only before .tif)
-        if file_name.split('.')[0].isdigit():
-            tif_files.append(file_path)
-    
+    # for file_path in all_tif_files:
+    #     file_name = os.path.basename(file_path)
+    #     # Check if the filename matches the pattern (digits only before .tif)
+    #     if file_name.split('.')[0].isdigit():
+    #         tif_files.append(file_path)
+    tif_files = all_tif_files
     if not tif_files:
         raise FileNotFoundError(f"No numbered TIF files (e.g., 01.tif) found in {data_path}")
     
@@ -178,13 +184,14 @@ def tif_to_hdf5(data_path, output_hdf5_path, patch_size=(256, 256), overlap=0):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate HDF5 files for TIF image and CSV mask patches.")
     parser.add_argument("--datatype", type=str, default="Brightfield",choices=["Brightfield", "Laser"], help="Specify the data type (Brightfield or Laser).")
+    parser.add_argument("--data_path", type=str, default='2025_03_04', help="Folder Path for the input TIF files.")
     parser.add_argument("--output_path", type=str, default='dataset', help="Folder Path for the output HDF5 file.")
     parser.add_argument("--patch_size", type=int, nargs=2, default=(256, 256), help="Patch size (height, width). Default is 256x256.")
     parser.add_argument("--overlap", type=int, default=0, help="Overlap between patches in pixels. Default is 0.")
     args = parser.parse_args()
 
     # Path to the data folder
-    data_path = os.path.join('dataset_', '2025_03_04')
+    data_path = args.data_path
     
     # Output HDF5 path
     output_hdf5_path = os.path.join(args.output_path, f"EV_{args.datatype.lower()}.hdf5")
@@ -192,4 +199,4 @@ if __name__ == "__main__":
     # Create output directory if it doesn't exist
     os.makedirs(args.output_path, exist_ok=True)
     
-    tif_to_hdf5(data_path, output_hdf5_path, patch_size=args.patch_size, overlap=args.overlap)
+    tif_to_hdf5(data_path, output_hdf5_path, patch_size=args.patch_size, overlap=args.overlap, datatype=args.datatype)
