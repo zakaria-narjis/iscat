@@ -7,34 +7,18 @@ import argparse
 """
 Not working due to ImageJ not working as expected/ refer to notebooks/labeling_script.ipynb for generating masks
 """
-def get_fluo_paths(root_path:str, mode:str="Brightfield"):
-    """
-    Extract paths to .nd2 files and corresponding TIFF files from the specified mode folder.
+def get_fluo_paths(folder_path, mode="Brightfield"):
+    # out = [
+    #     os.path.join(folder_path, f)
+    #     for f in os.listdir(folder_path)
+    #     if f.endswith('tif') and "FITC" in f
+    # ]
+    out = []
+    for f in os.listdir(folder_path):
+        if f.endswith('tif') and "FITC" in f:
+            out.append((os.path.join(folder_path, f),))
 
-    Args:
-        root_path (str): The root directory to search.
-        mode (str): The folder name to focus on (default is 'Brightfield').
-
-    Returns:
-        tuple: Two lists - list of .nd2 file paths and list of tuples with corresponding TIFF file paths.
-    """
-
-    target_files = []
-
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        if os.path.basename(dirpath) == mode:
-
-            # Generate TIFF file paths dynamically based on the prefix
-            cy5_path = os.path.join(dirpath, f'Captured Cy5.tif')
-            fitc_path = os.path.join(dirpath, f'Captured FITC.tif')
-            tritc_path = os.path.join(dirpath, f'Captured TRITC.tif')
-            target_files.append((cy5_path, fitc_path, tritc_path))
-            
-            # Ensure all three TIFF files exist
-            assert all(os.path.exists(path) for path in [cy5_path, fitc_path, tritc_path])
-        
-            
-    return target_files
+    return out
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Generate HDF5 files for image and mask patches.")
@@ -44,4 +28,5 @@ if __name__=="__main__":
 
     args = parser.parse_args()
     tif_tuples = get_fluo_paths(args.base_path, args.datatype)
+    print(tif_tuples)
     Utils.generate_np_masks(tif_tuples,seg_args=None,seg_method=args.seg_method)

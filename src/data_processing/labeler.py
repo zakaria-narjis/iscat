@@ -10,8 +10,14 @@ class Labeler:
 
     def __init__(self,method="comdet"):
         if method == "comdet":
-            self.ij = imagej.init(ij_dir_or_version_or_endpoint='D:\Fiji.app',mode=imagej.Mode.HEADLESS)
-            print(f"ImageJ2 version: {self.ij.getVersion()}")
+            fiji_path = '/nfshome/narjis/Fiji.app' # for Linux
+            # fiji_path = os.path.abspath('D:\Fiji.app') # for Windows
+            # self.ij = imagej.init(ij_dir_or_version_or_endpoint='D:\Fiji.app',mode=imagej.Mode.HEADLESS) # for Windows
+            # Check if Fiji path exists
+            if os.path.exists(fiji_path):
+                self.ij = imagej.init(ij_dir_or_version_or_endpoint=fiji_path,mode=imagej.Mode.HEADLESS) # for Linux
+            else:
+                raise FileNotFoundError(f"Fiji.app not found in the specified path: {fiji_path}")
 
     def create_labels_mask(self, canvas_shape, particles_positions_df):
         """
@@ -48,7 +54,7 @@ class Labeler:
 
         """
         if segmentation_method == "comdet":
-            particles_positions = []
+            # particles_positions = []
             canvas_shape = np.array(Image.open(fluo_images_paths[0])).shape
             
             for fluo_image_path, args in zip(fluo_images_paths, seg_args):
@@ -61,13 +67,14 @@ class Labeler:
                     results = self.ij.convert().convert(table, Table)
                     results = self.ij.py.from_java(results)        
                     results.to_csv(particles_position_path)
-                    particles_positions.append(results)
+                    # particles_positions.append(results)
+                    particles_positions_df = pd.read_csv(particles_position_path)
                 else:
                     particles_positions_df = pd.read_csv(particles_position_path)
-                    mask = self.create_labels_mask(canvas_shape, particles_positions_df)
-                    
-                    mask_path = fluo_image_path.replace(".tif","_mask.npy")
+                mask = self.create_labels_mask(canvas_shape, particles_positions_df)                    
+                mask_path = fluo_image_path.replace(".tif","_mask.npy")
                 np.save(mask_path,mask)
+
         elif segmentation_method == "kmeans":
             for fluo_image_path in fluo_images_paths:
                 mask_path = fluo_image_path.replace(".tif", "_mask_kmeans.npy")
