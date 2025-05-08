@@ -25,10 +25,10 @@ training:
   train_split_size: 0.7
   device: "cuda:4"
   loss:
-    loss_type: "dicece" # Options: crossentropy, dice, dicece, tversky
+    loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
-      alpha: 0.5
-      beta: 0.5
+      alpha: 0.3
+      beta: 0.7
       gamma: 1.0
       lambda_ce: 0.1
       lambda_dice: 1.0

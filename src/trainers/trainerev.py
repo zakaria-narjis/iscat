@@ -252,8 +252,7 @@ class Trainer:
                 self._freeze_encoder()
                 # Unfreeze layers up to the current one
                 for i in range(layer_to_unfreeze + 1):
-                    self._unfreeze_layer(i)
-                    
+                    self._unfreeze_layer(len(self.encoder_modules) - 1 - i)    
                 # Log the unfreezing action
                 self.logger.info(f"Epoch {epoch}: Progressive unfreezing up to layer {layer_to_unfreeze}")
                 
