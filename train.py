@@ -4,7 +4,7 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from src.data_processing.dataset import iScatDataset
-from src.trainers.trainer2 import Trainer
+from src.trainers.trainer import Trainer
 from src.models.Unet import UNet
 from src.data_processing.utils import Utils 
 import re
@@ -287,6 +287,7 @@ def main(args):
     save_metrics_to_json(test_results, experiment_dir)
     all_images, all_pred_masks,all_gt_masks = predict(model=model, dataset=test_dataset,device=device, images_indicies=[0,1,2,4]) 
     batch_plot_images_with_masks(all_images, all_pred_masks,all_gt_masks, output_dir=experiment_dir)
+
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)

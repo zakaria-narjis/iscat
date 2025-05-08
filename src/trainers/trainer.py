@@ -36,7 +36,7 @@ class Trainer:
         self.num_classes = config['num_classes']
         self.model = model.to(device)
         self.device = device
-        self.loss_type = config['loss_type']
+        self.loss_type = config['loss']['loss_type']
         self.class_weights = class_weights
         self.config = config
         self.earlystoping_patience = config['early_stopping']['patience']
@@ -65,9 +65,26 @@ class Trainer:
             if self.loss_type == "crossentropy":
                 return nn.BCEWithLogitsLoss()
             elif self.loss_type == "dice":
-                return DiceLoss(sigmoid=True, squared_pred=False, batch=True, reduction="mean")
+                return DiceLoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
+            elif self.loss_type == "dicece":
+                return DiceCELoss(sigmoid=True, 
+                                  squared_pred=True, 
+                                  batch=True, 
+                                  reduction="mean", 
+                                  weight=self.class_weights,
+                                  lambda_ce=self.config['loss']['parameters']['lambda_ce'],
+                                  lambda_dice=self.config['loss']['parameters']['lambda_dice']
+                                 )
+            elif self.loss_type == "tversky":
+                self.logger.info("Using Tversky Loss ")
+                return TverskyLoss(sigmoid=True, 
+                                   batch=True, 
+                                   reduction="mean", 
+                                   alpha=self.config['loss']['parameters']['alpha'], 
+                                   beta=self.config['loss']['parameters']['beta'],
+                                   )
             else:
-                return DiceCELoss(sigmoid=True, squared_pred=False, batch=True, reduction="mean")
+                raise ValueError(f"Invalid loss type: {self.loss_type}")
         else:
             if self.loss_type == "crossentropy":
                 self.logger.info("Using CrossEntropy Loss ")
@@ -77,23 +94,41 @@ class Trainer:
                 return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean",include_background=False)
             elif self.loss_type == "tversky":
                 self.logger.info("Using Tversky Loss ")
-                return TverskyLoss(softmax=True, batch=True, reduction="mean", alpha=0.2, beta=0.8,include_background=False)
-            else:
+                return TverskyLoss(softmax=True, 
+                                   batch=True, 
+                                   reduction="mean", 
+                                   alpha=self.config['loss']['parameters']['alpha'], 
+                                   beta=self.config['loss']['parameters']['beta'],
+                                   include_background=False)
+            elif self.loss_type == "dicece":
                 self.logger.info("Using Dice CrossEntropy Loss ")
                 return DiceCELoss(softmax=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
-
+            else:
+                raise ValueError(f"Invalid loss type: {self.loss_type}")
     def compute_loss(self, predictions, targets):
+        """
+        Compute loss given model predictions and target masks.
+        Args:
+            predictions (torch.Tensor): Model predictions. Shape: [B, N, H, W].
+            targets (torch.Tensor): Target masks. Shape: [B, 1, H, W].
+        """
         if len(targets.shape) == 3:
-            targets = targets.unsqueeze(1)
-        targets = one_hot(targets, num_classes=self.num_classes, dim=1)
+            targets =  targets.unsqueeze(1)     
+        if self.num_classes>1:
+            targets = one_hot(targets, num_classes=self.num_classes, dim=1)
         return self.loss(predictions, targets)
 
     def compute_metrics(self, predictions, targets):
         if len(targets.shape) == 3:
-            targets = targets.unsqueeze(1) # [B, 1, H, W]
-        pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
-        # target_one_hot = torch.cat([1 - targets, targets], dim=1)
-        target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
+            targets =  targets.unsqueeze(1)     
+        if self.num_classes>1:
+            pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes) # [B, N, H, W]
+            target_one_hot = one_hot(targets, num_classes=self.num_classes) # [B, N, H, W]
+        else:
+            pred_one_hot = torch.sigmoid(predictions) > 0.5 # [B, 1, H, W]
+            pred_one_hot = one_hot(pred_one_hot, num_classes=2)
+            target_one_hot = one_hot(targets, num_classes=2) 
+
         metric = self.miou_metric(pred_one_hot, target_one_hot) 
         return metric.nanmean().item()
 
@@ -103,7 +138,9 @@ class Trainer:
         total_miou = 0.0
 
         for batch_idx, (images, masks) in enumerate(train_loader):
-            images, masks = images.to(self.device), masks.to(self.device)            
+            images, masks = images.to(self.device), masks.to(self.device)    
+            if len(masks.shape) == 3:
+                 masks =  masks.unsqueeze(1)        
             # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
             predictions = self.model(images)
@@ -144,7 +181,11 @@ class Trainer:
             total_miou += self.compute_metrics(predictions, masks)
             
             # Convert predictions and masks to CPU numpy arrays
-            pred_masks = torch.argmax(predictions, dim=1).cpu().numpy()
+            if self.num_classes == 1:
+                pred_masks = torch.sigmoid(predictions).cpu().numpy() > 0.5 # [B, 1, H, W]
+                pred_masks = pred_masks.squeeze(1) # [B, H, W]
+            else:
+                pred_masks = torch.argmax(predictions, dim=1).cpu().numpy() # [B, H, W]
             gt_masks = masks.cpu().numpy()
             
             # Process entire batch at once

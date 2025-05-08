@@ -135,7 +135,7 @@ class Trainer:
             for param in module.parameters():
                 param.requires_grad = True
             self.logger.info(f"Unfroze parameters in {name}")
-    
+
     def _initialize_optimizer(self):
         """
         Initialize optimizer with separate parameter groups for encoder and decoder
@@ -256,12 +256,12 @@ class Trainer:
                 # Log the unfreezing action
                 self.logger.info(f"Epoch {epoch}: Progressive unfreezing up to layer {layer_to_unfreeze}")
                 
-                # Save the current unfreeze state for reference
-                unfreeze_state = {
-                    'epoch': epoch,
-                    'unfrozen_layers': [self.encoder_modules[i][0] for i in range(layer_to_unfreeze + 1)]
-                }
-                torch.save(unfreeze_state, os.path.join(self.experiment_dir, f'unfreeze_state_epoch_{epoch}.pth'))
+                # # Save the current unfreeze state for reference
+                # unfreeze_state = {
+                #     'epoch': epoch,
+                #     'unfrozen_layers': [self.encoder_modules[i][0] for i in range(layer_to_unfreeze + 1)]
+                # }
+                # torch.save(unfreeze_state, os.path.join(self.experiment_dir, f'unfreeze_state_epoch_{epoch}.pth'))
 
         for batch_idx, (images, masks) in enumerate(train_loader):
             images, masks = images.to(self.device), masks.to(self.device)    
