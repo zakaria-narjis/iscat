@@ -28,7 +28,7 @@ def count_matching_particles(pred_mask: np.ndarray,
     for pred_label in range(1, num_pred + 1):
         pred_particle = pred_labeled == pred_label
         
-        # Find any overlap with GT particles
+        # Find any overlap with GT particles(here we can add some threshold)
         overlapping_gt_labels = set(gt_labeled[pred_particle]) - {0}
         
         if overlapping_gt_labels:

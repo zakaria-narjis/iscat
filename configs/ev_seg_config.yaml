@@ -22,10 +22,10 @@ data:
 
 training:
 
-  pretrained: True
+  pretrained: False
   pretrained_model_path: "/nfshome/narjis/workspace/iscat/experiments/runs/U_Net_Brightfield_2025-05-07_17-12-33/best_model.pth"
   fine_tuning:
-    enabled: True
+    enabled: False
     freeze_encoder: true
     encoder_lr_factor: 0.1  # Encoder learning rate = base_lr * factor
     progressive_unfreeze:
@@ -34,7 +34,7 @@ training:
 
   batch_size: 32
   num_epochs: 400
-  train_split_size: 0.7
+  train_split_size: 0.8
   device: "cuda:4"
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
@@ -50,7 +50,7 @@ training:
   optimizer:
     type: "Adam"
     parameters:
-      lr: 1e-4 #1e-4
+      lr: 1e-3 #1e-4
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
