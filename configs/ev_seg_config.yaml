@@ -1,11 +1,11 @@
 seed: 0
 data:
   image_size: 256
-  z_chunk_size : 32  # Number of chunks to divide the z-stack into for averaging
+  z_chunk_size : 64  # Number of chunks to divide the z-stack into for averaging
   fluo_masks_indices: [0] # classes used for training
   seg_method: "comdet"
   data_type: "Brightfield" # Brightfield/Laser
-  normalize: "zscore" # Options: zscore, minmax, none
+  normalize: zscore # Options: zscore, minmax, none
   multi_class: False
   dataset_folder_path: "/data_ssd2/iscat_data"
 
@@ -39,8 +39,8 @@ training:
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
-      alpha: 0.7
-      beta: 0.3
+      alpha: 0.6
+      beta: 0.4
       gamma: 1.0
       lambda_ce: 0.1
       lambda_dice: 1.0

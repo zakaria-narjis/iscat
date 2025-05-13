@@ -12,7 +12,7 @@ import random
 import cv2
 
 class iScatDataset(Dataset):
-    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None,multi_class=False):
+    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None,multi_class=False, chunk_size=32):
         """
         PyTorch Dataset for microscopy data stored in an HDF5 file.
 
@@ -22,12 +22,14 @@ class iScatDataset(Dataset):
             apply_augmentation (bool): Whether to apply random flips.
             normalize (str): Normalization method, either 'minmax' or 'zscore'.
             indices (list): Optional list of indices to subset the dataset.
+            chunk_size (int): Number of frames to average for each image.
         """
         self.hdf5_path = hdf5_path
         self.classes = classes
         self.apply_augmentation = apply_augmentation
         self.normalize = normalize
         self.multi_class = multi_class
+        self.chunk_size = chunk_size
         # Open HDF5 file and get dataset sizes
         with h5py.File(hdf5_path, "r") as f:
             self.image_dataset_size = f["image_patches"].shape[0]
@@ -46,7 +48,7 @@ class iScatDataset(Dataset):
         with h5py.File(self.hdf5_path, "r") as f:
             image = f["image_patches"][idx].copy()  # Shape: (Z, H, W)
             masks = f["mask_patches"][idx].copy()   # Shape: (C, H, W)
-        image = Utils.extract_averaged_frames(image, num_frames=32)
+        image = Utils.extract_averaged_frames(image, num_frames=self.chunk_size)
         # Convert to float32
         image = torch.from_numpy(image.astype(np.float32))  # Convert image to tensor
         masks = torch.from_numpy(masks.astype(np.uint8))    # Convert masks to tensor

@@ -260,6 +260,7 @@ def main(args):
         apply_augmentation=config['data']['train_dataset']['apply_augmentation'],
         normalize=config['data']['train_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
+        chunk_size=config['data']['z_chunk_size'],
     )
 
     valid_dataset = iScatDataset(
@@ -269,7 +270,9 @@ def main(args):
         apply_augmentation=config['data']['valid_dataset']['apply_augmentation'],  
         normalize=config['data']['valid_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
+        chunk_size=config['data']['z_chunk_size'],
     )
+    
     test_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=test_indices,
@@ -277,6 +280,7 @@ def main(args):
         apply_augmentation=False,
         normalize=config['data']['train_dataset']['normalize'],
         multi_class=config['data']['multi_class'],
+        chunk_size=config['data']['z_chunk_size'],
     )
     # Create dataloaders
     train_loader, val_loader ,test_loader= create_dataloaders(
