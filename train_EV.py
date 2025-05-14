@@ -66,9 +66,9 @@ def get_args_parser(add_help:bool=True):
     parser.add_argument('--config', type=str, default="configs/ev_seg_config.yaml", help='Path to the configuration file')
     return parser
 
-def create_dataloaders(train_dataset, valid_dataset,test_dataset, batch_size):
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
+def create_dataloaders(train_dataset, valid_dataset,test_dataset, batch_size,config):
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,num_workers=config["data"]["train_dataset"]["num_workers"])
+    val_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False,num_workers=config["data"]["valid_dataset"]["num_workers"])
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader,test_loader
 
@@ -283,7 +283,7 @@ def main(args):
     )
     # Create dataloaders
     train_loader, val_loader ,test_loader= create_dataloaders(
-        train_dataset, valid_dataset, test_dataset, batch_size=config['training']['batch_size']
+        train_dataset, valid_dataset, test_dataset, batch_size=config['training']['batch_size'],config=config
     )
 
     if config['model']['type'] == 'U_Net':

@@ -25,8 +25,13 @@ if __name__=="__main__":
     parser.add_argument("--base_path", type=str, required=True, help="The base directory to search.")
     parser.add_argument("--seg_method", type=str, choices=["comdet", "kmeans"], default="comdet", help="The segmentation method to use.")
     parser.add_argument("--datatype", type=str, choices=["Brightfield", "Laser"], default="Brightfield", help="The folder to consider.")
-
+    parser.add_argument("--seg_args", type=dict, default={
+                "ch1i":True,
+                "ch1a":5,
+                "ch1s":15
+                }, 
+                help="The segmentation arguments to use.")
     args = parser.parse_args()
     tif_tuples = get_fluo_paths(args.base_path, args.datatype)
     print(tif_tuples)
-    Utils.generate_np_masks(tif_tuples,seg_args=None,seg_method=args.seg_method)
+    Utils.generate_np_masks(tif_tuples,seg_args=args.seg_args,seg_method=args.seg_method)

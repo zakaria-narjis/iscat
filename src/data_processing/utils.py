@@ -177,6 +177,8 @@ class Utils:
                 "ch1a":4,
                 "ch1s":10
                 }
+            else:
+                args = seg_args
             seg_args = [[args,args,args]]* len(all_fluo_images_paths)    
             for fluorescence_images_path,seg_arg in tqdm(zip(all_fluo_images_paths,seg_args),total=len(all_fluo_images_paths),desc="Creating Masks with ComDet"):
                 labeler.generate_labels(fluorescence_images_path, seg_arg, segmentation_method=seg_method)

@@ -117,8 +117,8 @@ def tif_to_hdf5(data_path, output_hdf5_path, patch_size=(256, 256), overlap=0,da
             print(f"Processing {tif_file}...")
             
             # Corresponding CSV file path
-            csv_file = os.path.join(data_path, f"{file_basename}_FITC.csv")
-            
+            # csv_file = os.path.join(data_path, f"{file_basename}_FITC.csv")
+            mask_file = os.path.join(data_path, f"{file_basename}_FITC_mask.npy")
             # Load TIF image
             try:
                 # First try with tifffile which handles multi-page TIFs better
@@ -137,8 +137,8 @@ def tif_to_hdf5(data_path, output_hdf5_path, patch_size=(256, 256), overlap=0,da
                 continue
             
             # Create elliptical mask from CSV
-            mask = create_mask_from_csv(csv_file, (height, width))
-            
+            # mask = create_mask_from_csv(csv_file, (height, width))
+            mask = np.load(mask_file)
             # Extract patches
             for y in range(0, height - patch_height + 1, patch_height - overlap):
                 for x in range(0, width - patch_width + 1, patch_width - overlap):

@@ -10,18 +10,19 @@ data:
   dataset_folder_path: "/data_ssd2/iscat_data"
 
   train_dataset:
+    num_workers: 12
     apply_augmentation: true
     normalize: ${data.normalize} # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
   valid_dataset:
+    num_workers: 12
     apply_augmentation: false
     normalize: ${data.normalize}  # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 
 training:
-
   pretrained: False
   pretrained_model_path: "/nfshome/narjis/workspace/iscat/experiments/runs/U_Net_Brightfield_2025-05-07_17-12-33/best_model.pth"
   fine_tuning:
@@ -34,7 +35,7 @@ training:
 
   batch_size: 32
   num_epochs: 400
-  train_split_size: 0.9
+  train_split_size: 0.8
   device: "cuda:4"
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
@@ -50,7 +51,7 @@ training:
   optimizer:
     type: "Adam"
     parameters:
-      lr: 1e-3 #1e-4
+      lr: 1e-4 #1e-4
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
