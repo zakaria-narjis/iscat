@@ -1,5 +1,4 @@
-from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net
-from src.models.Unet import UNet
+from src.models.Unet_networks import U_Net, AttU_Net, R2AttU_Net, R2U_Net
 import yaml
 import os
 import torch
@@ -45,10 +44,10 @@ class SegInference:
         Returns:
             torch.nn.Module: Trained model.
         """
-        checkpoint = torch.load(model_path, weights_only=False)
+        checkpoint = torch.load(model_path, map_location=device,weights_only=True)
         model_name = config['model']['type']
         if model_name == 'U_Net':
-            model = UNet(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
+            model = U_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
         elif model_name == 'AttU_Net':
             model = AttU_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
         elif model_name == 'R2AttU_Net':

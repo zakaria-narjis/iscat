@@ -1,7 +1,7 @@
 seed: 0
 data:
   image_size: 256
-  z_chunk_size : 64  # Number of chunks to divide the z-stack into for averaging
+  z_chunk_size : 32  # Number of chunks to divide the z-stack into for averaging
   fluo_masks_indices: [0] # classes used for training
   seg_method: "comdet"
   data_type: "Brightfield" # Brightfield/Laser
@@ -34,13 +34,13 @@ training:
 
   batch_size: 32
   num_epochs: 400
-  train_split_size: 0.8
+  train_split_size: 0.9
   device: "cuda:4"
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
-      alpha: 0.6
-      beta: 0.4
+      alpha: 0.5
+      beta: 0.5
       gamma: 1.0
       lambda_ce: 0.1
       lambda_dice: 1.0
@@ -64,7 +64,7 @@ testing:
 
 model:
   type: "U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
-  init_features: 64
+  init_features: 64 #64
 
 logging:
   tensorboard:
