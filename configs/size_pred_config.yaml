@@ -4,7 +4,7 @@ data:
   mean: null  # If null, will be computed from dataset
   std: null   # If null, will be computed from dataset
   padding: false
-  dataset_path: "/data_ssd2/iscat_data/brightfield_particles_x.hdf5."
+  dataset_path: "/data_ssd2/iscat_data/brightfield_particles_x.hdf5"
 
 training:
   batch_size: 10000
@@ -13,7 +13,7 @@ training:
   optimizer:
     type: "Adam"
     parameters:
-      lr: 1e-4
+      lr: 1e-2
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
@@ -36,4 +36,4 @@ training:
 
 logging:
   tensorboard:
-    log_dir: "experiments/size_prediction/runs"
+    log_dir: "experiments/runs/size_prediction"

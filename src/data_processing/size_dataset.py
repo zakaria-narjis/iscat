@@ -35,19 +35,21 @@ def compute_normalization_stats(h5_path, classes=None):
 class ParticleDataset(Dataset):
     """Custom Dataset for particle data with flexible class selection and normalization."""
     def __init__(self, h5_path, classes=[0, 1], transform=None, mean=None, std=None,padding=False,indices=None):
-        self.h5_file = h5py.File(h5_path, 'r')
-        data = self.h5_file['data'][:]
-        labels = self.h5_file['labels'][:]
+        # self.h5_file = h5py.File(h5_path, 'r')
+        # data = self.h5_file['data'][:]
+        # labels = self.h5_file['labels'][:]
         self.padding = padding
         # Filter data for selected classes
-        mask = np.isin(labels, classes)
-        if indices is None:
-            self.data = data[mask][:]
-            self.labels = labels[mask][:] 
-        else:
-            self.data = data[mask][indices]
-            self.labels = labels[mask][indices]
         
+        with h5py.File(h5_path, 'r') as h5_file:
+            mask = np.isin(h5_file['labels'], classes)
+            if indices is None:
+                self.data = h5_file['data'][mask][:]
+                self.labels = h5_file['labels'][mask][:] 
+            else:
+                self.data = h5_file['data'][mask][indices]
+                self.labels = h5_file['labels'][mask][indices]    
+                
         # Create class mapping to handle non-consecutive class indices
         self.class_to_idx = {c: i for i, c in enumerate(classes)}
         self.num_classes = len(classes)

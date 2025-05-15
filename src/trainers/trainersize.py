@@ -60,6 +60,10 @@ class TrainerSize(nn.Module):
         self.writer = writer
         self.verbose = verbose
         self.optimizer = optim.Adam(model.parameters(), lr=self.config['optimizer']['parameters']['lr'])
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode=self.config['scheduler']['parameters']["mode"], factor=self.config['scheduler']['parameters']['factor'], 
+            patience=self.config['scheduler']['parameters']['patience'], 
+        )
         self.checkpoint_path = os.path.join(experiment_dir, 'best_model.pth')
 
         # Configure logging
@@ -79,13 +83,13 @@ class TrainerSize(nn.Module):
         Returns:
             None
         """
+        total_loss = 0
         for batch_images, _ in train_dataloader:
             target_distribution = torch.clone(label_points)
             batch_images = batch_images.to(self.device)
             
             # Zero gradients
             self.optimizer.zero_grad()
-            
             # Forward pass: generate predictions
             batch_predictions = self.model(batch_images)
             # Compute KNN divergence loss

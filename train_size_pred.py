@@ -175,7 +175,7 @@ def main(args):
     set_random_seed(config['seed'])
     
     # Set up experiment directory and tensorboard writer
-    experiment_folder_name = f'SizePred_ResNet18_{getdatetime()}'
+    experiment_folder_name = f'ResNet18_{getdatetime()}'
     experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
     experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
     writer = SummaryWriter(log_dir=experiment_dir)
@@ -187,7 +187,7 @@ def main(args):
     os.makedirs(experiment_dir, exist_ok=True)
     with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
         yaml.dump(config, f)
-        
+
     augmentation = v2.Compose([
         v2.RandomVerticalFlip(p=0.5),
         v2.RandomHorizontalFlip(p=0.5),
