@@ -23,17 +23,17 @@ data:
     multi_class: ${data.multi_class}  # Do not change
 
 training:
-  pretrained: False
+  pretrained: True
   pretrained_model_path: "/nfshome/narjis/workspace/iscat/experiments/runs/U_Net_Brightfield_2025-05-07_17-12-33/best_model.pth"
   fine_tuning:
-    enabled: False
+    enabled: True
     freeze_encoder: true
     encoder_lr_factor: 0.1  # Encoder learning rate = base_lr * factor
     progressive_unfreeze:
       enabled: True
       epochs_per_layer: 5  # Number of epochs before unfreezing next layer
 
-  batch_size: 32
+  batch_size: 16
   num_epochs: 400
   train_split_size: 0.8
   device: "cuda:4"
@@ -51,7 +51,7 @@ training:
   optimizer:
     type: "Adam"
     parameters:
-      lr: 1e-4 #1e-4
+      lr: 1e-5 #1e-4
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
