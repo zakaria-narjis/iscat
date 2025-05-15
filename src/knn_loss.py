@@ -53,13 +53,13 @@ def distance_matrix(a, b):
 
     return torch.abs(a_expanded - b_expanded)
 
-def knn_divergence(points_x:torch.Tensor, points_y:torch.Tensor, k:int, smoothing_kernel=None,reduction='mean',method="absolute"):
+def knn_divergence(points_x:torch.Tensor, points_y:torch.Tensor, k_neighbors:torch.Tensor, smoothing_kernel=None,reduction='mean',method="absolute"):
     """
     Computes the KNN divergence between two sets of points.
     Args:
         points_x (torch.Tensor): First set of points (shape: [N, D])
         points_y (torch.Tensor): Second set of points (shape: [M, D])
-        k (int): Number of nearest neighbors to consider
+        k_neighbors (torch.Tensor): Number of neighbors to consider
         smoothing_kernel (torch.Tensor, optional): Kernel for smoothing the distances
         reduction (str, optional): Reduction method ('mean', 'sum', 'none')
         method (str, optional): Method for divergence calculation ('fraction', 'absolute')
@@ -74,14 +74,14 @@ def knn_divergence(points_x:torch.Tensor, points_y:torch.Tensor, k:int, smoothin
     # e.g. y has twice as many points -> the distance to the 3rd closest point in x should be the same as the distance to the 6th point in y
     k_multiplier = points_y.shape[0] / points_x.shape[0]
 
-    k_dist_xx = torch.sort(xx_distances, dim=1)[0][:, k]
-    k_dist_xy = torch.sort(xy_distances, dim=1)[0][:, (k * k_multiplier).to(torch.int)]
+    k_dist_xx = torch.sort(xx_distances, dim=1)[0][:, k_neighbors]
+    k_dist_xy = torch.sort(xy_distances, dim=1)[0][:, (k_neighbors * k_multiplier).to(torch.int)]
     # optional: smoothen the distances 
     # (so that it matters less whether a point is the i-th or the (i+1)-th closest neighbor)
     if smoothing_kernel != None:
-            # torch conv1d demands a channel dimension, hence the (un)squeezing
-            k_dist_xx = torch.nn.functional.conv1d(k_dist_xx.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)).flatten(1)
-            k_dist_xy = torch.nn.functional.conv1d(k_dist_xy.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)).flatten(1)
+        # torch conv1d demands a channel dimension, hence the (un)squeezing
+        k_dist_xx = torch.nn.functional.conv1d(k_dist_xx.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)).flatten(1)
+        k_dist_xy = torch.nn.functional.conv1d(k_dist_xy.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)).flatten(1)
     if method== "fraction":
         # scale-invariant, but trains less easily
         output = (1 - k_dist_xx / k_dist_xy)**2

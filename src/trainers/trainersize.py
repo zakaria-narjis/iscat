@@ -67,7 +67,7 @@ class TrainerSize(nn.Module):
         log_level = logging.DEBUG if verbose else logging.WARNING
         logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s") 
 
-    def train_epoch(self, train_dataloader: DataLoader, label_points: torch.Tensor):
+    def train_epoch(self, train_dataloader: DataLoader, label_points: torch.Tensor, k_neighbors: torch.Tensor):
         """
         Train the model for one epoch.
         
@@ -91,7 +91,7 @@ class TrainerSize(nn.Module):
             # Compute KNN divergence loss
             loss = knn_divergence(batch_predictions, 
                                   target_distribution, 
-                                  self.config["target_distribution"]["k"],
+                                  k_neighbors=k_neighbors,
                                   method="absolute")
 
             # Backward pass and optimize
@@ -119,6 +119,7 @@ class TrainerSize(nn.Module):
         best_loss = float('inf')
         no_improve = 0
         loss_log = []
+        k_neighbors = torch.arange(2,self.config["target_distribution"]["k"], dtype=torch.int)
         # Training loop
         for epoch in range(num_epochs):
             if epoch % self.config["target_distribution"]["cycle"] == 0:
@@ -131,7 +132,7 @@ class TrainerSize(nn.Module):
                     max_value=self.config["target_distribution"]["max_value"]
                 ).to(self.device, non_blocking=True)
             self.model.train()
-            avg_loss = self.train_epoch(train_dataloader, label_points)
+            avg_loss = self.train_epoch(train_dataloader, label_points, k_neighbors)
             loss_log.append(avg_loss)
             current_lr = self.optimizer.param_groups[0]['lr']
             # Learning rate scheduling
@@ -155,7 +156,7 @@ class TrainerSize(nn.Module):
             else:
                 no_improve += 1
 
-            if no_improve >= self.earlystoping_patience and self.config['early_stopping']['enabled']:
+            if no_improve >= self.config["early_stopping"]["patience"] and self.config['early_stopping']['enabled']:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break
 

@@ -1,0 +1,39 @@
+seed: 42
+data:
+  classes: [0]  # Classes to include in training
+  mean: null  # If null, will be computed from dataset
+  std: null   # If null, will be computed from dataset
+  padding: false
+  dataset_path: "/data_ssd2/iscat_data/brightfield_particles_x.hdf5."
+
+training:
+  batch_size: 10000
+  num_epochs: 400
+  device: "cuda:4"
+  optimizer:
+    type: "Adam"
+    parameters:
+      lr: 1e-4
+  scheduler:
+    type: "ReduceLROnPlateau"
+    parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 8
+  early_stopping:
+    enabled: true
+    patience: 20
+  
+  # Parameters for the target size distribution
+  target_distribution:
+    num_points: 30000  # Number of points in the target distribution
+    mean: 76.0        # Mean of the target normal distribution (in nm)
+    std: 22.5         # Standard deviation of the distribution (in nm)
+    min_value: 10.0   # Minimum size value (in nm)
+    max_value: null   # Maximum size value (in nm), null means no maximum
+    k: 3000           # k parameter for KNN divergence loss
+    cycle: 5          # Regenerate distribution every N epochs
+
+logging:
+  tensorboard:
+    log_dir: "experiments/size_prediction/runs"
