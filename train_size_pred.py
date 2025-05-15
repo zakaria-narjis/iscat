@@ -14,6 +14,8 @@ import random
 import numpy as np
 import json
 from torchvision.transforms import v2  
+from matplotlib import pyplot as plt
+
 
 def save_metrics_to_json(metrics_dict, output_folder):
     """
@@ -62,8 +64,8 @@ def get_args_parser(add_help=True):
     return parser
 
 
-def create_dataloaders(train_dataset, batch_size):
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,drop_last=True)
+def create_dataloaders(train_dataset, batch_size, num_workers=0):
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,drop_last=True, num_workers=num_workers)
     return train_loader
 
 
@@ -168,6 +170,147 @@ def write_config_to_tensorboard(writer, config):
             "\n".join(table_rows)
         )
 
+def plot_loss_and_distribution(model, dataset_path, classes, mean, std, device, loss_log, experiment_dir):
+    """
+    Plot training loss history and compare ground truth vs predicted distribution.
+    
+    Args:
+        model: Trained model
+        dataset_path: Path to the HDF5 dataset
+        classes: List of classes to include
+        mean: Normalization mean
+        std: Normalization std
+        device: Device to run inference on
+        loss_log: List of loss values recorded during training
+        experiment_dir: Directory to save the plot
+    """
+    # Create a dataset for plotting
+    plot_dataset = ParticleDataset(
+        h5_path=dataset_path,
+        classes=classes,
+        mean=mean,
+        std=std,
+        padding=True,
+        transform=None,
+        indices=None
+    )
+    
+    # Create dataloader
+    plot_dataloader = DataLoader(plot_dataset, batch_size=len(plot_dataset), shuffle=False)
+    
+    # Get predictions
+    with torch.no_grad():
+        data = next(iter(plot_dataloader))
+        images = data[0]
+        labels = data[1].cpu().numpy()  # Ground truth sizes
+        predictions = model(images.to(device)).cpu().detach().numpy()
+    
+    # Create the plot
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))  # Two subplots side by side
+    
+    # Left subplot: Loss logs with log scale
+    min_loss = min(loss_log)
+    axes[0].plot(loss_log, color='blue', label='Loss')
+    axes[0].set_xlabel('Epochs')
+    axes[0].axhline(y=min_loss, color='blue', linestyle='dashed')
+    axes[0].text(0, min_loss, f'{min_loss:.4f}', color='blue', verticalalignment='bottom')
+    axes[0].set_ylabel('Loss (log-scale)')
+    axes[0].set_yscale('log')  # Apply log scale to y-axis
+    axes[0].legend()
+    axes[0].grid(True, which='both', linestyle='--', linewidth=0.5)
+    
+    # Right subplot: Histogram of predictions vs ground truth
+    axes[1].hist(labels, bins=50, alpha=0.6, label='Ground Truth', color='blue', density=True)
+    axes[1].hist(predictions, bins=50, color='red', label='Prediction', alpha=0.7, density=True)
+    axes[1].set_xlabel('Diameter [nm]')
+    axes[1].set_ylabel('Density')
+    axes[1].legend()
+    
+    plt.tight_layout()
+    
+    # Save the figure
+    plt.savefig(os.path.join(experiment_dir, 'distribution_with_loss.pdf'), format="pdf", dpi=300)
+    plt.savefig(os.path.join(experiment_dir, 'distribution_with_loss.png'), format="png", dpi=300)
+    plt.close(fig)
+
+
+
+def plot_sample_images(model, dataset_path, classes, mean, std, device, experiment_dir):
+    """
+    Plot a grid of sample images with their predicted sizes.
+    
+    Args:
+        model: Trained model
+        dataset_path: Path to the HDF5 dataset
+        classes: List of classes to include
+        mean: Normalization mean
+        std: Normalization std
+        device: Device to run inference on
+        experiment_dir: Directory to save the plot
+    """
+    # Create a dataset for plotting
+    plot_dataset = ParticleDataset(
+        h5_path=dataset_path,
+        classes=classes,
+        mean=mean,
+        std=std,
+        padding=False,
+        transform=None,
+        indices=None
+    )
+    
+    # Create dataloader with a large batch size
+    plot_dataloader = DataLoader(plot_dataset, batch_size=len(plot_dataset), shuffle=False)
+    
+    # Get predictions
+    with torch.no_grad():
+        imgs = next(iter(plot_dataloader))[0]  # (batch_size, 3, 16, 201)
+        sizes = model(imgs.to(device)).cpu()
+        
+        # Find min, max indices
+        max_size, max_idx = sizes.max(dim=0)
+        min_size, min_idx = sizes.min(dim=0)
+        
+        # Compute middle size (median)
+        mid_size = sizes.median()
+        mid_idx = (sizes - mid_size).abs().argmin()
+        mid_idx = torch.tensor([mid_idx], dtype=torch.int64)
+        
+        # Create 9 intermediate values between min and max
+        intermediate_sizes, intermediate_indices = [], []
+        for fraction in torch.linspace(0, 1, steps=9):
+            interp_size = min_size + fraction * (max_size - min_size)
+            closest_idx = (sizes - interp_size).abs().argmin()
+            intermediate_sizes.append(sizes[closest_idx])
+            intermediate_indices.append(closest_idx)
+        
+        # Convert indices to tensor
+        intermediate_indices = torch.tensor(intermediate_indices, dtype=torch.int64)
+        
+        # Get images and resize them
+        resized_images = [
+            torch.nn.functional.interpolate(
+                imgs[idx][0:1].unsqueeze(0), size=(16, 32), mode="bilinear", align_corners=False
+            ).squeeze(0)[0]
+            for idx in intermediate_indices
+        ]
+    
+    # Create 3x3 subplot
+    fig, axes = plt.subplots(3, 3, figsize=(12, 9))
+    
+    # Plot images
+    for ax, img, size in zip(axes.flat, resized_images, intermediate_sizes):
+        ax.imshow(img, cmap="gray")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.title.set_text(f"size: {round(size.item(), 2)}")
+    
+    # Adjust layout and save
+    plt.tight_layout()
+    plt.savefig(os.path.join(experiment_dir, 'samples_size_predict.pdf'), format="pdf", dpi=300)
+    plt.savefig(os.path.join(experiment_dir, 'samples_size_predict.png'), format="png", dpi=300)
+    plt.close(fig)
+    
 
 def main(args):  
     # Load configuration
@@ -205,7 +348,7 @@ def main(args):
 
     # Create dataloader
     train_loader = create_dataloaders(
-        train_dataset, batch_size=config['training']['batch_size']
+        train_dataset, batch_size=config['training']['batch_size'],num_workers=config["data"]["num_workers"]
     )
 
     # Initialize model
@@ -236,10 +379,31 @@ def main(args):
     }
     save_metrics_to_json(metrics, experiment_dir)
 
-    print(f"Training completed. Model saved to {experiment_dir}")
+    # Plot loss and distribution comparison
+    plot_loss_and_distribution(
+        model=model,
+        dataset_path=config['data']['dataset_path'],
+        classes=config['data']['classes'],
+        mean=config['data']['mean'],
+        std=config['data']['std'],
+        device=device,
+        loss_log=loss_log,
+        experiment_dir=experiment_dir
+    )
     
-    # Clean up
-    train_dataset.close()
+    # Plot sample images with predicted sizes
+    plot_sample_images(
+        model=model,
+        dataset_path=config['data']['dataset_path'],
+        classes=config['data']['classes'],
+        mean=config['data']['mean'],
+        std=config['data']['std'],
+        device=device,
+        experiment_dir=experiment_dir
+    )
+
+    print(f"Training completed. Model and plots saved to {experiment_dir}")
+    
 
 
 if __name__ == "__main__":

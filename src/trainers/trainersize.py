@@ -8,7 +8,7 @@ import logging
 import os
 import torch
 import torch.nn as nn
-
+from tqdm import tqdm
 
 def generate_label_distribution(num_points=10000, mean=76, std=22.5, min_value=10, max_value=None):
     """
@@ -125,7 +125,7 @@ class TrainerSize(nn.Module):
         loss_log = []
         k_neighbors = torch.arange(2,self.config["target_distribution"]["k"], dtype=torch.int)
         # Training loop
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
             if epoch % self.config["target_distribution"]["cycle"] == 0:
                 # Generate new label points every 5 epochs
                 label_points = generate_label_distribution(
