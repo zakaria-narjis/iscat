@@ -1,15 +1,15 @@
-seed: 42
+seed: 0
 data:
   classes: [0]  # Classes to include in training
   mean: null  # If null, will be computed from dataset
   std: null   # If null, will be computed from dataset
   padding: false
-  dataset_path: "/data_ssd2/iscat_data/brightfield_particles_x.hdf5"
+  dataset_path: "/data_ssd2/iscat_data/brightfield_particles_y.hdf5"
   num_workers: 12
 training:
-  batch_size: 10000
+  batch_size: 30000
   num_epochs: 400
-  device: "cuda:4"
+  device: [0,1,2,3,4] #"cuda:4"
   optimizer:
     type: "Adam"
     parameters:
