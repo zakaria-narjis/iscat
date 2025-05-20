@@ -3,7 +3,7 @@ import argparse
 import yaml
 import torch
 from torch.utils.data import DataLoader
-from src.trainers.trainersize_ import TrainerSize, generate_label_distribution
+from src.trainers.trainersizeParallel import TrainerSize, generate_label_distribution
 from src.data_processing.size_dataset import ParticleDataset
 from src.models.resnet import ResNet18
 import re
@@ -16,6 +16,10 @@ import json
 from torchvision.transforms import v2  
 from matplotlib import pyplot as plt
 import matplotlib
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 matplotlib.set_loglevel("WARNING")
 
 def save_metrics_to_json(metrics_dict, output_folder):
@@ -62,67 +66,11 @@ def load_config(config_path):
 def get_args_parser(add_help=True):
     parser = argparse.ArgumentParser(description='iScat Size Prediction')
     parser.add_argument('--config', type=str, default="configs/size_pred_config.yaml", help='Path to the configuration file')
-    parser.add_argument('--devices', type=str, nargs='+', help='Override device configuration. Use "cpu" for CPU, single number for single GPU, or multiple numbers for multi-GPU (e.g., --devices 0 1 2)')
     return parser
 
 
-def parse_device_config(device_arg, config_device):
-    """
-    Parse device configuration from command line arguments or config file.
-    
-    Args:
-        device_arg: Device argument from command line
-        config_device: Device configuration from config file
-    
-    Returns:
-        Parsed device configuration
-    """
-    if device_arg is not None:
-        if len(device_arg) == 1:
-            if device_arg[0].lower() == 'cpu':
-                return 'cpu'
-            else:
-                try:
-                    return int(device_arg[0])
-                except ValueError:
-                    return device_arg[0]  # Return as string (e.g., 'cuda:0')
-        else:
-            # Multiple devices
-            return [int(d) for d in device_arg]
-    else:
-        # Use config file device setting
-        return config_device
-
-
-def create_dataloaders(train_dataset, batch_size, num_workers=0, device_config=None):
-    """
-    Create dataloaders with appropriate settings for multi-GPU training.
-    
-    Args:
-        train_dataset: Training dataset
-        batch_size: Batch size
-        num_workers: Number of worker processes
-        device_config: Device configuration (for adjusting batch size if multi-GPU)
-    
-    Returns:
-        DataLoader for training
-    """
-    # Adjust batch size for multi-GPU training
-    effective_batch_size = batch_size
-    if isinstance(device_config, list) and len(device_config) > 1:
-        # For DataParallel, the batch is split across GPUs
-        # So we keep the same batch size but it will be divided among GPUs
-        print(f"Multi-GPU training: batch size {batch_size} will be split across {len(device_config)} GPUs")
-        print(f"Effective batch size per GPU: {batch_size // len(device_config)}")
-    
-    train_loader = DataLoader(
-        train_dataset, 
-        batch_size=effective_batch_size, 
-        shuffle=True,
-        drop_last=True, 
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available()  # Enable pin_memory for faster GPU transfer
-    )
+def create_dataloaders(train_dataset, batch_size, num_workers=0):
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,drop_last=True, num_workers=num_workers)
     return train_loader
 
 
@@ -227,26 +175,12 @@ def write_config_to_tensorboard(writer, config):
             "\n".join(table_rows)
         )
 
-def get_model_for_inference(model, is_parallel):
-    """
-    Get the appropriate model for inference (unwrap DataParallel if needed).
-    
-    Args:
-        model: The model (potentially wrapped in DataParallel)
-        is_parallel: Boolean indicating if model is DataParallel
-    
-    Returns:
-        The model ready for inference
-    """
-    return model.module if is_parallel else model
-
-def plot_loss_and_distribution(model, is_parallel, dataset_path, classes, mean, std, device, loss_log, experiment_dir, distribution_config):
+def plot_loss_and_distribution(model, dataset_path, classes, mean, std, device, loss_log, experiment_dir,distribution_config):
     """
     Plot training loss history and compare ground truth vs predicted distribution.
     
     Args:
         model: Trained model
-        is_parallel: Boolean indicating if model is DataParallel
         dataset_path: Path to the HDF5 dataset
         classes: List of classes to include
         mean: Normalization mean
@@ -256,9 +190,6 @@ def plot_loss_and_distribution(model, is_parallel, dataset_path, classes, mean, 
         experiment_dir: Directory to save the plot
         distribution_config: Configuration for generating the distribution
     """
-    # Get the appropriate model for inference
-    inference_model = get_model_for_inference(model, is_parallel)
-    
     # Create a dataset for plotting
     plot_dataset = ParticleDataset(
         h5_path=dataset_path,
@@ -283,7 +214,7 @@ def plot_loss_and_distribution(model, is_parallel, dataset_path, classes, mean, 
     with torch.no_grad():
         data = next(iter(plot_dataloader))
         images = data[0]
-        predictions = inference_model(images.to(device)).cpu().detach().numpy()
+        predictions = model(images.to(device)).cpu().detach().numpy()
     
     # Create the plot
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))  # Two subplots side by side
@@ -313,13 +244,13 @@ def plot_loss_and_distribution(model, is_parallel, dataset_path, classes, mean, 
     plt.close(fig)
 
 
-def plot_sample_images(model, is_parallel, dataset_path, classes, mean, std, device, experiment_dir):
+
+def plot_sample_images(model, dataset_path, classes, mean, std, device, experiment_dir):
     """
     Plot a grid of sample images with their predicted sizes.
     
     Args:
         model: Trained model
-        is_parallel: Boolean indicating if model is DataParallel
         dataset_path: Path to the HDF5 dataset
         classes: List of classes to include
         mean: Normalization mean
@@ -327,9 +258,6 @@ def plot_sample_images(model, is_parallel, dataset_path, classes, mean, std, dev
         device: Device to run inference on
         experiment_dir: Directory to save the plot
     """
-    # Get the appropriate model for inference
-    inference_model = get_model_for_inference(model, is_parallel)
-    
     # Create a dataset for plotting
     plot_dataset = ParticleDataset(
         h5_path=dataset_path,
@@ -347,7 +275,7 @@ def plot_sample_images(model, is_parallel, dataset_path, classes, mean, std, dev
     # Get predictions
     with torch.no_grad():
         imgs = next(iter(plot_dataloader))[0]  # (batch_size, 3, 16, 201)
-        sizes = inference_model(imgs.to(device)).cpu()
+        sizes = model(imgs.to(device)).cpu()
         
         # Find min, max indices
         max_size, max_idx = sizes.max(dim=0)
@@ -393,112 +321,104 @@ def plot_sample_images(model, is_parallel, dataset_path, classes, mean, std, dev
     plt.close(fig)
     
 
-def main(args):
-    # Load configuration
-    config = load_config(args.config)
+def ddp_main(rank, world_size, args, config):
+    # os.environ["MASTER_ADDR"] = "localhost"
+    # os.environ["MASTER_PORT"] = "12355"
+    
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+    
     set_random_seed(config['seed'])
     
-    # Parse device configuration
-    device_config = parse_device_config(args.devices, config['training']['device'])
-    config['training']['device'] = device_config  # Update config with parsed device
-    
-    print(f"Using device configuration: {device_config}")
-    
-    # Set up experiment directory and tensorboard writer
-    experiment_folder_name = f'ResNet18_{getdatetime()}'
-    experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
-    experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
-    writer = SummaryWriter(log_dir=experiment_dir)
-    write_config_to_tensorboard(writer, config)
+    device = torch.device(f"cuda:{rank}")
+    print(f"[RANK {rank}] Starting ddp_main with PID {os.getpid()}")  
+    if rank == 0:
+        experiment_folder_name = f'ResNet18_{getdatetime()}'
+        experiment_dir = os.path.join(config['logging']['tensorboard']['log_dir'], experiment_folder_name)
+        writer = SummaryWriter(log_dir=experiment_dir)
+        write_config_to_tensorboard(writer, config)
+        os.makedirs(experiment_dir, exist_ok=True)
+    else:
+        writer = None
+        experiment_dir = None
 
-    os.makedirs(experiment_dir, exist_ok=True)
-    with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
-        yaml.dump(config, f)
-
+    # Dataset and sampler
     augmentation = v2.Compose([
         v2.RandomVerticalFlip(p=0.5),
         v2.RandomHorizontalFlip(p=0.5),
     ])
-    
-    # Create dataset
     train_dataset = ParticleDataset(
         h5_path=config['data']['dataset_path'],
         classes=config['data']['classes'],
-        transform=augmentation,  
+        transform=augmentation,
         mean=config['data']['mean'],
         std=config['data']['std'],
         padding=config['data']['padding'],
-        indices=None,
     )
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=config['training']['batch_size'], 
+                              sampler=train_sampler, 
+                              num_workers=config['data']['num_workers'],
+                              drop_last=True) 
 
-    # Create dataloader with device-aware settings
-    train_loader = create_dataloaders(
-        train_dataset, 
-        batch_size=config['training']['batch_size'],
-        num_workers=config["data"]["num_workers"],
-        device_config=device_config
-    )
+    model = ResNet18(num_classes=1).to(device)
+    model = DDP(model, device_ids=[rank])
 
-    # Initialize model
-    model = ResNet18(num_classes=1)  # For regression, output is a single value
-    
-    # Initialize trainer with device configuration
     trainer = TrainerSize(
         model=model,
-        device_config=device_config,  # Pass device_config instead of device
+        device=device,
         config=config['training'],
         experiment_dir=experiment_dir,
         writer=writer,
-        verbose=True
+        verbose=(rank == 0)
     )
+   
+    loss_log = trainer.train(train_loader, num_epochs=config['training']['num_epochs'])
 
-    # Train the model
-    loss_log = trainer.train(
-        train_loader,
-        num_epochs=config['training']['num_epochs']
-    )
-    
-    # Save metrics
-    metrics = {
-        "loss_history": loss_log,
-        "final_loss": loss_log[-1] if loss_log else None,
-        "num_epochs_trained": len(loss_log),
-        "device_config": str(device_config),
-        "is_parallel": trainer.is_parallel
-    }
-    save_metrics_to_json(metrics, experiment_dir)
+    if rank == 0:
+        metrics = {
+            "loss_history": loss_log,
+            "final_loss": loss_log[-1] if loss_log else None,
+            "num_epochs_trained": len(loss_log)
+        }
+        save_metrics_to_json(metrics, experiment_dir)
+        plot_loss_and_distribution(
+            model=model,
+            dataset_path=config['data']['dataset_path'],
+            classes=config['data']['classes'],
+            mean=config['data']['mean'],
+            std=config['data']['std'],
+            device=device,
+            loss_log=loss_log,
+            experiment_dir=experiment_dir,
+            distribution_config=config['training']['target_distribution']
+        )
+        
+        # Plot sample images with predicted sizes
+        plot_sample_images(
+            model=model,
+            dataset_path=config['data']['dataset_path'],
+            classes=config['data']['classes'],
+            mean=config['data']['mean'],
+            std=config['data']['std'],
+            device=device,
+            experiment_dir=experiment_dir
+        )
+        writer.close()
+    dist.barrier()  # Synchronize all processes
+    dist.destroy_process_group()
 
-    # Plot loss and distribution comparison
-    plot_loss_and_distribution(
-        model=trainer.model,
-        is_parallel=trainer.is_parallel,
-        dataset_path=config['data']['dataset_path'],
-        classes=config['data']['classes'],
-        mean=config['data']['mean'],
-        std=config['data']['std'],
-        device=trainer.device,
-        loss_log=loss_log,
-        experiment_dir=experiment_dir,
-        distribution_config=config['training']['target_distribution']
-    )
-    
-    # Plot sample images with predicted sizes
-    plot_sample_images(
-        model=trainer.model,
-        is_parallel=trainer.is_parallel,
-        dataset_path=config['data']['dataset_path'],
-        classes=config['data']['classes'],
-        mean=config['data']['mean'],
-        std=config['data']['std'],
-        device=trainer.device,
-        experiment_dir=experiment_dir
-    )
-
-    print(f"Training completed. Model and plots saved to {experiment_dir}")
-    print(f"Training was performed on: {device_config}")
-    if trainer.is_parallel:
-        print(f"DataParallel was used with {len(trainer.model.device_ids)} GPUs")
-
+def main(args):
+    print("Starting main function")
+    config = load_config(args.config)
+    devices = config['training']['device']
+    if isinstance(devices, int):
+        devices = [devices]
+    world_size = torch.cuda.device_count() 
+    local_rank = int(os.environ['LOCAL_RANK'])
+    config['training']['optimizer']['parameters']['lr'] = config['training']['optimizer']['parameters']['lr'] * world_size
+    ddp_main(rank= local_rank,world_size=world_size, args=args, config=config)
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
