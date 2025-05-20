@@ -5,7 +5,7 @@ data:
   std: null   # If null, will be computed from dataset
   padding: false
   dataset_path: "/data_ssd2/iscat_data/brightfield_particles_x.hdf5"
-
+  num_workers: 12
 training:
   batch_size: 10000
   num_epochs: 400
