@@ -18,6 +18,8 @@ import h5py
 from src.models.vit import CellViT
 from src.testing import test_model
 import json
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 def save_metrics_to_json(metrics_dict, output_folder):
@@ -35,8 +37,6 @@ def save_metrics_to_json(metrics_dict, output_folder):
     os.makedirs(output_folder, exist_ok=True)
 
     # Generate filename with timestamp
-    from datetime import datetime
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"test_metrics_{timestamp}.json"
 
@@ -68,18 +68,45 @@ def get_args_parser(add_help: bool = True):
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/seg_config.yaml",
+        default="configs/cellvit_seg_config.yaml",
         help="Path to the configuration file",
     )
     return parser
 
 
-def create_dataloaders(train_dataset, valid_dataset, test_dataset, batch_size):
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
+def create_dataloaders(train_dataset, valid_dataset, test_dataset, batch_size, world_size, config, rank):
+    # Create distributed samplers
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        train_dataset, num_replicas=world_size, rank=rank, shuffle=True
     )
-    val_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    val_sampler = torch.utils.data.distributed.DistributedSampler(
+        valid_dataset, num_replicas=world_size, rank=rank, shuffle=False
+    )
+    test_sampler = torch.utils.data.distributed.DistributedSampler(
+        test_dataset, num_replicas=world_size, rank=rank, shuffle=False
+    )
+    
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=batch_size, 
+        sampler=train_sampler,
+        num_workers=config["data"]["train_dataset"]["num_workers"],
+        pin_memory=True
+    )
+    val_loader = DataLoader(
+        valid_dataset, 
+        batch_size=batch_size, 
+        sampler=val_sampler,
+        num_workers=config["data"]["valid_dataset"]["num_workers"],
+        pin_memory=True
+    )
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=batch_size, 
+        sampler=test_sampler,
+        num_workers=2,
+        pin_memory=True
+    )
     return train_loader, val_loader, test_loader
 
 
@@ -178,28 +205,34 @@ def write_config_to_tensorboard(writer, config):
         writer.add_text(f"Configuration/{section}", "\n".join(table_rows))
 
 
-def main(args):
-    # Load configuration
-    config = load_config(args.config)
+def ddp_main(rank, world_size, args, config):
+    # Initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+    
     set_random_seed(config["seed"])
-    # experiment_name = sanitize_filename(config['experiment_name'])
-    experiment_folder_name = f'{config["model"]["type"]}_{config["data"]["data_type"]}_{getdatetime()}'
-    experiment_folder_name = experiment_folder_name[
-        :100
-    ]  # Limit folder name length
-    experiment_dir = os.path.join(
-        config["logging"]["tensorboard"]["log_dir"], experiment_folder_name
-    )
-    writer = SummaryWriter(log_dir=experiment_dir)
-    write_config_to_tensorboard(writer, config)
+    
+    device = torch.device(f"cuda:{rank}")
+    print(f"[RANK {rank}] Starting ddp_main with PID {os.getpid()}")
+    
+    # Only rank 0 handles logging and output directories
+    if rank == 0:
+        experiment_folder_name = f'{config["model"]["type"]}_{config["data"]["data_type"]}_{getdatetime()}'
+        experiment_folder_name = experiment_folder_name[:100]  # Limit folder name length
+        experiment_dir = os.path.join(
+            config["logging"]["tensorboard"]["log_dir"], experiment_folder_name
+        )
+        writer = SummaryWriter(log_dir=experiment_dir)
+        write_config_to_tensorboard(writer, config)
+        os.makedirs(experiment_dir, exist_ok=True)
+        
+        with open(os.path.join(experiment_dir, "config.yaml"), "w") as f:
+            yaml.dump(config, f)
+    else:
+        writer = None
+        experiment_dir = None
 
-    # Log config to TensorBoard
-
-    # Set device
-    device = torch.device(
-        config["training"]["device"] if torch.cuda.is_available() else "cpu"
-    )
-
+    # Determine number of classes and channels
     if config["data"]["multi_class"]:
         num_classes = len(config["data"]["train_dataset"]["classes"]) + 1
     else:
@@ -209,9 +242,7 @@ def main(args):
     config["training"]["num_classes"] = num_classes
     config["model"]["in_channels"] = in_channels
     config["model"]["out_channels"] = out_channels
-    os.makedirs(experiment_dir, exist_ok=True)
-    with open(os.path.join(experiment_dir, "config.yaml"), "w") as f:
-        yaml.dump(config, f)
+
     # Get data paths
     if config["data"]["data_type"] == "Brightfield":
         hdf5_path = os.path.join(
@@ -234,14 +265,13 @@ def main(args):
     valid_indices, test_indices = train_test_split(
         temp_indices, test_size=1 / 3, random_state=config["seed"]
     )
+    
     # Create datasets
     train_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=train_indices,
         classes=config["data"]["train_dataset"]["classes"],
-        apply_augmentation=config["data"]["train_dataset"][
-            "apply_augmentation"
-        ],
+        apply_augmentation=config["data"]["train_dataset"]["apply_augmentation"],
         normalize=config["data"]["train_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
     )
@@ -250,12 +280,11 @@ def main(args):
         hdf5_path=hdf5_path,
         indices=valid_indices,
         classes=config["data"]["valid_dataset"]["classes"],
-        apply_augmentation=config["data"]["valid_dataset"][
-            "apply_augmentation"
-        ],
+        apply_augmentation=config["data"]["valid_dataset"]["apply_augmentation"],
         normalize=config["data"]["valid_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
     )
+    
     test_dataset = iScatDataset(
         hdf5_path=hdf5_path,
         indices=test_indices,
@@ -264,14 +293,14 @@ def main(args):
         normalize=config["data"]["train_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
     )
-    # Create dataloaders
+
+    # Create dataloaders with distributed samplers
     train_loader, val_loader, test_loader = create_dataloaders(
-        train_dataset,
-        valid_dataset,
-        test_dataset,
-        batch_size=config["training"]["batch_size"],
+        train_dataset, valid_dataset, test_dataset, 
+        config["training"]["batch_size"], world_size, config,rank
     )
 
+    # Create model and wrap with DDP
     model = CellViT(
         num_classes=num_classes,
         embed_dim=config["model"]["embed_dim"],
@@ -279,8 +308,11 @@ def main(args):
         depth=config["model"]["depth"],
         num_heads=config["model"]["num_heads"],
         extract_layers=config["model"]["extract_layers"],
-    )
+    ).to(device)
+    
+    model = DDP(model, device_ids=[rank])
 
+    # Calculate class weights if needed
     if config["training"]["class_weights"]["use"]:
         class_weights = Utils.calculate_class_weights_from_masks(
             Utils.load_masks_from_hdf5(
@@ -291,7 +323,8 @@ def main(args):
             class_weights = class_weights[1] / class_weights[0]
     else:
         class_weights = None
-    # Initialize trainer
+
+    # Initialize trainer (only rank 0 gets writer and experiment_dir)
     trainer = Trainer(
         model=model,
         device=device,
@@ -299,6 +332,7 @@ def main(args):
         writer=writer,
         experiment_dir=experiment_dir,
         class_weights=class_weights,
+        verbose=(rank == 0),  # Add verbose parameter if Trainer supports it
     )
 
     # Train the model
@@ -306,20 +340,52 @@ def main(args):
         train_loader, val_loader, num_epochs=config["training"]["num_epochs"]
     )
 
-    test_results = test_model(model, test_loader, device, num_classes)
-    save_metrics_to_json(test_results, experiment_dir)
-    all_images, all_pred_masks, all_gt_masks = predict(
-        model=model,
-        dataset=test_dataset,
-        device=device,
-        images_indicies=[0, 1, 2, 4],
+    # Only rank 0 performs testing and visualization
+    if rank == 0:
+        test_results = test_model(model, test_loader, device, num_classes)
+        save_metrics_to_json(test_results, experiment_dir)
+        
+        all_images, all_pred_masks, all_gt_masks = predict(
+            model=model,
+            dataset=test_dataset,
+            device=device,
+            images_indicies=[0, 1, 2, 4],
+        )
+        batch_plot_images_with_masks(
+            all_images, all_pred_masks, all_gt_masks, output_dir=experiment_dir
+        )
+        
+        writer.close()
+
+    # Synchronize all processes before cleanup
+    dist.barrier()
+    dist.destroy_process_group()
+
+
+def main(args):
+    print("Starting main function")
+    config = load_config(args.config)
+    
+    # Get device configuration
+    devices = config["training"]["device"]
+    if isinstance(devices, int):
+        devices = [devices]
+    
+    # Get world size from available GPUs
+    world_size = torch.cuda.device_count()
+    
+    # Get local rank from environment variable (set by torchrun)
+    local_rank = int(os.environ["LOCAL_RANK"])
+    
+    # Scale learning rate by world size for distributed training
+    config["training"]["optimizer"]["parameters"]["lr"] = (
+        config["training"]["optimizer"]["parameters"]["lr"] * world_size
     )
-    batch_plot_images_with_masks(
-        all_images, all_pred_masks, all_gt_masks, output_dir=experiment_dir
-    )
+    
+    # Call the distributed main function
+    ddp_main(rank=local_rank, world_size=world_size, args=args, config=config)
 
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)
-

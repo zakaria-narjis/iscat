@@ -10,6 +10,7 @@ from tqdm import tqdm
 import logging
 from src.metrics import batch_multiclass_metrics
 from src.trainers.utils import is_main_process
+import torch.distributed as dist
 
 class Trainer:
     def __init__(
@@ -21,6 +22,8 @@ class Trainer:
         class_weights=None,
         writer: SummaryWriter = None,
         verbose: bool = True,
+        rank: int = 0,
+        world_size: int = 1,
     ):
         """
         Args:
@@ -31,6 +34,8 @@ class Trainer:
             class_weights (list): Class weights for loss computation.
             writer (SummaryWriter): Tensorboard writer.
             verbose (bool): If False, suppress output logs.
+            rank (int): Process rank for distributed training.
+            world_size (int): Total number of processes for distributed training.
         """
         self.num_classes = config["num_classes"]
         self.model = model.to(device)
@@ -39,10 +44,13 @@ class Trainer:
         self.class_weights = class_weights
         self.config = config
         self.earlystoping_patience = config["early_stopping"]["patience"]
+        self.rank = rank
+        self.world_size = world_size
+        self.is_main_process = rank == 0
 
         # Configure logging
         self.logger = logging.getLogger(__name__)
-        log_level = logging.DEBUG if verbose else logging.WARNING
+        log_level = logging.DEBUG if verbose and self.is_main_process else logging.WARNING
         logging.basicConfig(
             level=log_level, format="%(asctime)s - %(levelname)s - %(message)s"
         )
@@ -63,7 +71,7 @@ class Trainer:
         )
 
         self.writer = writer
-        self.checkpoint_path = os.path.join(experiment_dir, "best_model.pth")
+        self.checkpoint_path = os.path.join(experiment_dir, "best_model.pth") if experiment_dir else None
 
     def _initialize_loss(self):
         if self.num_classes == 1:
@@ -89,7 +97,8 @@ class Trainer:
                     ],
                 )
             elif self.loss_type == "tversky":
-                self.logger.info("Using Tversky Loss ")
+                if self.is_main_process:
+                    self.logger.info("Using Tversky Loss ")
                 return TverskyLoss(
                     sigmoid=True,
                     batch=True,
@@ -101,10 +110,12 @@ class Trainer:
                 raise ValueError(f"Invalid loss type: {self.loss_type}")
         else:
             if self.loss_type == "crossentropy":
-                self.logger.info("Using CrossEntropy Loss ")
+                if self.is_main_process:
+                    self.logger.info("Using CrossEntropy Loss ")
                 return nn.CrossEntropyLoss(weight=self.class_weights)
             elif self.loss_type == "dice":
-                self.logger.info("Using Dice Loss ")
+                if self.is_main_process:
+                    self.logger.info("Using Dice Loss ")
                 return DiceLoss(
                     softmax=True,
                     squared_pred=True,
@@ -113,7 +124,8 @@ class Trainer:
                     include_background=False,
                 )
             elif self.loss_type == "tversky":
-                self.logger.info("Using Tversky Loss ")
+                if self.is_main_process:
+                    self.logger.info("Using Tversky Loss ")
                 return TverskyLoss(
                     softmax=True,
                     batch=True,
@@ -123,7 +135,8 @@ class Trainer:
                     include_background=False,
                 )
             elif self.loss_type == "dicece":
-                self.logger.info("Using Dice CrossEntropy Loss ")
+                if self.is_main_process:
+                    self.logger.info("Using Dice CrossEntropy Loss ")
                 return DiceCELoss(
                     softmax=True,
                     squared_pred=True,
@@ -175,6 +188,7 @@ class Trainer:
             images, masks = images.to(self.device), masks.to(self.device)
             if len(masks.shape) == 3:
                 masks = masks.unsqueeze(1)
+            
             # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
             predictions = self.model(images)
@@ -190,6 +204,18 @@ class Trainer:
         n_batches = len(train_loader)
         avg_loss = total_loss / n_batches
         avg_miou = total_miou / n_batches
+
+        # Gather metrics from all processes
+        if self.world_size > 1:
+            all_losses = [None] * self.world_size
+            all_mious = [None] * self.world_size
+            dist.all_gather_object(all_losses, avg_loss)
+            dist.all_gather_object(all_mious, avg_miou)
+            
+            if self.is_main_process:
+                # Average across all processes
+                avg_loss = sum(all_losses) / len(all_losses)
+                avg_miou = sum(all_mious) / len(all_mious)
 
         return avg_loss, avg_miou
 
@@ -246,6 +272,41 @@ class Trainer:
         avg_loss = total_loss / n_batches
         avg_miou = total_miou / n_batches
 
+        # Gather metrics from all processes
+        if self.world_size > 1:
+            # Gather basic metrics
+            all_losses = [None] * self.world_size
+            all_mious = [None] * self.world_size
+            all_class_metrics = [None] * self.world_size
+            all_total_metrics = [None] * self.world_size
+            
+            dist.all_gather_object(all_losses, avg_loss)
+            dist.all_gather_object(all_mious, avg_miou)
+            dist.all_gather_object(all_class_metrics, class_metrics)
+            dist.all_gather_object(all_total_metrics, (total_tp, total_fp, total_fn))
+            
+            if self.is_main_process:
+                # Average losses and mious
+                avg_loss = sum(all_losses) / len(all_losses)
+                avg_miou = sum(all_mious) / len(all_mious)
+                
+                # Aggregate class metrics
+                aggregated_class_metrics = {}
+                for class_metrics_single in all_class_metrics:
+                    for class_id, metrics in class_metrics_single.items():
+                        if class_id not in aggregated_class_metrics:
+                            aggregated_class_metrics[class_id] = {"tp": 0, "fp": 0, "fn": 0}
+                        aggregated_class_metrics[class_id]["tp"] += metrics["tp"]
+                        aggregated_class_metrics[class_id]["fp"] += metrics["fp"]
+                        aggregated_class_metrics[class_id]["fn"] += metrics["fn"]
+                
+                class_metrics = aggregated_class_metrics
+                
+                # Aggregate total metrics
+                total_tp = sum(metrics[0] for metrics in all_total_metrics)
+                total_fp = sum(metrics[1] for metrics in all_total_metrics)
+                total_fn = sum(metrics[2] for metrics in all_total_metrics)
+
         # Compute class-specific precision and recall
         class_precision_recall = {}
         for class_id, metrics in class_metrics.items():
@@ -292,10 +353,15 @@ class Trainer:
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float("inf")
         no_improve = 0
+        
         for epoch in tqdm(
             range(num_epochs),
-            disable=not self.logger.isEnabledFor(logging.DEBUG),
+            disable=not (self.logger.isEnabledFor(logging.DEBUG) and self.is_main_process),
         ):
+            # Set epoch for distributed sampler
+            if hasattr(train_loader.sampler, 'set_epoch'):
+                train_loader.sampler.set_epoch(epoch)
+            
             train_loss, train_miou = self.train_epoch(train_loader)
             (
                 val_loss,
@@ -306,86 +372,99 @@ class Trainer:
                 class_metrics,
             ) = self.validate(val_loader)
 
-            self.scheduler.step(val_loss)
+            # Only main process handles scheduling, logging, and checkpointing
+            if self.is_main_process:
+                self.scheduler.step(val_loss)
 
-            if self.writer is not None:
-                # Log general metrics
-                self.writer.add_scalar("Train/Loss", train_loss, epoch)
-                self.writer.add_scalar("Train/mIoU", train_miou, epoch)
-                self.writer.add_scalar("Validation/Loss", val_loss, epoch)
-                self.writer.add_scalar("Validation/mIoU", val_miou, epoch)
-                self.writer.add_scalar(
-                    "Learning Rate", self.optimizer.param_groups[0]["lr"], epoch
-                )
-
-                # Log total precision and recall
-                self.writer.add_scalar("Validation/Total_F1", val_f1, epoch)
-                self.writer.add_scalar(
-                    "Validation/Total_Precision", val_precision, epoch
-                )
-                self.writer.add_scalar(
-                    "Validation/Total_Recall", val_recall, epoch
-                )
-
-                # Log class-specific metrics
-                for class_id, metrics in class_metrics.items():
+                if self.writer is not None:
+                    # Log general metrics
+                    self.writer.add_scalar("Train/Loss", train_loss, epoch)
+                    self.writer.add_scalar("Train/mIoU", train_miou, epoch)
+                    self.writer.add_scalar("Validation/Loss", val_loss, epoch)
+                    self.writer.add_scalar("Validation/mIoU", val_miou, epoch)
                     self.writer.add_scalar(
-                        f"Validation/Class_{class_id}_Precision",
-                        metrics["precision"],
-                        epoch,
-                    )
-                    self.writer.add_scalar(
-                        f"Validation/Class_{class_id}_Recall",
-                        metrics["recall"],
-                        epoch,
-                    )
-                    self.writer.add_scalar(
-                        f"Validation/Class_{class_id}_F1", metrics["f1"], epoch
+                        "Learning Rate", self.optimizer.param_groups[0]["lr"], epoch
                     )
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model_state_dict": self.model.state_dict(),
-                        "optimizer_state_dict": self.optimizer.state_dict(),
-                        "val_miou": val_miou,
-                        "val_loss": val_loss,
-                    },
-                    self.checkpoint_path,
-                )
-                no_improve = 0
-            else:
-                no_improve += 1
+                    # Log total precision and recall
+                    self.writer.add_scalar("Validation/Total_F1", val_f1, epoch)
+                    self.writer.add_scalar(
+                        "Validation/Total_Precision", val_precision, epoch
+                    )
+                    self.writer.add_scalar(
+                        "Validation/Total_Recall", val_recall, epoch
+                    )
 
-            # Log metrics for each class
-            self.logger.info(
-                f"Epoch {epoch+1}/{num_epochs}, "
-                f"Train Loss: {train_loss:.4f}, "
-                f"Train mIoU: {train_miou:.4f}, "
-                f"Val Loss: {val_loss:.4f}, "
-                f"Val mIoU: {val_miou:.4f}, "
-                f"LR: {self.optimizer.param_groups[0]['lr']:.2e}"
-            )
+                    # Log class-specific metrics
+                    for class_id, metrics in class_metrics.items():
+                        self.writer.add_scalar(
+                            f"Validation/Class_{class_id}_Precision",
+                            metrics["precision"],
+                            epoch,
+                        )
+                        self.writer.add_scalar(
+                            f"Validation/Class_{class_id}_Recall",
+                            metrics["recall"],
+                            epoch,
+                        )
+                        self.writer.add_scalar(
+                            f"Validation/Class_{class_id}_F1", metrics["f1"], epoch
+                        )
 
-            self.logger.info(
-                f"Total F1: {val_f1:.4f}, "
-                f"Total Precision: {val_precision:.4f}, "
-                f"Total Recall: {val_recall:.4f}"
-            )
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    if self.checkpoint_path:
+                        torch.save(
+                            {
+                                "epoch": epoch,
+                                "model_state_dict": self.model.module.state_dict() if hasattr(self.model, 'module') else self.model.state_dict(),
+                                "optimizer_state_dict": self.optimizer.state_dict(),
+                                "val_miou": val_miou,
+                                "val_loss": val_loss,
+                            },
+                            self.checkpoint_path,
+                        )
+                    no_improve = 0
+                else:
+                    no_improve += 1
 
-            for class_id, metrics in class_metrics.items():
+                # Log metrics for each class
                 self.logger.info(
-                    f"Class {class_id}: "
-                    f"Precision: {metrics['precision']:.4f}, "
-                    f"Recall: {metrics['recall']:.4f}, "
-                    f"F1: {metrics['f1']:.4f}"
+                    f"Epoch {epoch+1}/{num_epochs}, "
+                    f"Train Loss: {train_loss:.4f}, "
+                    f"Train mIoU: {train_miou:.4f}, "
+                    f"Val Loss: {val_loss:.4f}, "
+                    f"Val mIoU: {val_miou:.4f}, "
+                    f"LR: {self.optimizer.param_groups[0]['lr']:.2e}"
                 )
 
-            if (
-                no_improve >= self.earlystoping_patience
-                and self.config["early_stopping"]["enabled"]
-            ):
-                self.logger.info(f"Early stopping at epoch {epoch+1}")
+                self.logger.info(
+                    f"Total F1: {val_f1:.4f}, "
+                    f"Total Precision: {val_precision:.4f}, "
+                    f"Total Recall: {val_recall:.4f}"
+                )
+
+                for class_id, metrics in class_metrics.items():
+                    self.logger.info(
+                        f"Class {class_id}: "
+                        f"Precision: {metrics['precision']:.4f}, "
+                        f"Recall: {metrics['recall']:.4f}, "
+                        f"F1: {metrics['f1']:.4f}"
+                    )
+
+            # Broadcast early stopping decision from main process
+            if self.world_size > 1:
+                early_stop_tensor = torch.tensor([no_improve >= self.earlystoping_patience and self.config["early_stopping"]["enabled"]], dtype=torch.bool, device=self.device)
+                dist.broadcast(early_stop_tensor, src=0)
+                should_early_stop = early_stop_tensor.item()
+            else:
+                should_early_stop = no_improve >= self.earlystoping_patience and self.config["early_stopping"]["enabled"]
+
+            if should_early_stop:
+                if self.is_main_process:
+                    self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break
+            
+            # Synchronize all processes before next epoch
+            if self.world_size > 1:
+                dist.barrier()
