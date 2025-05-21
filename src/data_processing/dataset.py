@@ -3,16 +3,22 @@ import random
 from torch.utils.data import Dataset
 import numpy as np
 import torch
-from tifffile import imread
 from src.data_processing.utils import Utils
 import h5py
-import torch
-from torch.utils.data import Dataset
-import random
 import cv2
 
+
 class iScatDataset(Dataset):
-    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None,multi_class=False, chunk_size=32):
+    def __init__(
+        self,
+        hdf5_path,
+        classes=[0, 1, 2],
+        apply_augmentation=False,
+        normalize="minmax",
+        indices=None,
+        multi_class=False,
+        chunk_size=32,
+    ):
         """
         PyTorch Dataset for microscopy data stored in an HDF5 file.
 
@@ -35,7 +41,9 @@ class iScatDataset(Dataset):
             self.image_dataset_size = f["image_patches"].shape[0]
 
         # If indices are provided, filter dataset length
-        self.indices = indices if indices is not None else range(self.image_dataset_size)
+        self.indices = (
+            indices if indices is not None else range(self.image_dataset_size)
+        )
 
     def __len__(self):
         return len(self.indices)
@@ -47,11 +55,15 @@ class iScatDataset(Dataset):
         # Load the data from HDF5
         with h5py.File(self.hdf5_path, "r") as f:
             image = f["image_patches"][idx].copy()  # Shape: (Z, H, W)
-            masks = f["mask_patches"][idx].copy()   # Shape: (C, H, W)
+            masks = f["mask_patches"][idx].copy()  # Shape: (C, H, W)
         image = Utils.extract_averaged_frames(image, num_frames=self.chunk_size)
         # Convert to float32
-        image = torch.from_numpy(image.astype(np.float32))  # Convert image to tensor
-        masks = torch.from_numpy(masks.astype(np.uint8))    # Convert masks to tensor
+        image = torch.from_numpy(
+            image.astype(np.float32)
+        )  # Convert image to tensor
+        masks = torch.from_numpy(
+            masks.astype(np.uint8)
+        )  # Convert masks to tensor
 
         # Normalize the image
         if self.normalize == "minmax":
@@ -63,7 +75,9 @@ class iScatDataset(Dataset):
         elif self.normalize is None:
             pass
         else:
-            raise ValueError("Invalid normalization method. Choose 'minmax' or 'zscore'.")
+            raise ValueError(
+                "Invalid normalization method. Choose 'minmax' or 'zscore'."
+            )
 
         # Process masks based on selected classes
         if len(self.classes) == 1:
@@ -80,8 +94,8 @@ class iScatDataset(Dataset):
                 mask = torch.zeros_like(masks[0], dtype=torch.uint8)
                 for cls in self.classes:
                     mask += masks[cls]
-                mask[mask>1] = 1  # Ensure binary mask
-                
+                mask[mask > 1] = 1  # Ensure binary mask
+
         # Apply augmentation using torchvision.transforms.functional
         if self.apply_augmentation:
             # Random horizontal flipping
@@ -98,12 +112,22 @@ class iScatDataset(Dataset):
             if random.random() > 0.5:
                 angle = random.choice([90, -90])
                 image = TF.rotate(image, angle)
-                mask = TF.rotate(mask, angle)        
+                mask = TF.rotate(mask, angle)
         # Ensure the returned tensors have the right shapes
         return image, mask
 
+
 class iScatDataset2(Dataset):
-    def __init__(self, hdf5_path, classes=[0, 1, 2], apply_augmentation=False, normalize="minmax", indices=None, multi_class=False, boundary_mask=False):
+    def __init__(
+        self,
+        hdf5_path,
+        classes=[0, 1, 2],
+        apply_augmentation=False,
+        normalize="minmax",
+        indices=None,
+        multi_class=False,
+        boundary_mask=False,
+    ):
         """
         PyTorch Dataset for microscopy data stored in an HDF5 file.
 
@@ -124,19 +148,21 @@ class iScatDataset2(Dataset):
 
         with h5py.File(hdf5_path, "r") as f:
             self.image_dataset_size = f["image_patches"].shape[0]
-        
-        self.indices = indices if indices is not None else range(self.image_dataset_size)
+
+        self.indices = (
+            indices if indices is not None else range(self.image_dataset_size)
+        )
 
     def __len__(self):
         return len(self.indices)
 
     def __getitem__(self, idx):
         idx = self.indices[idx]
-        
+
         with h5py.File(self.hdf5_path, "r") as f:
             image = f["image_patches"][idx].copy()
             masks = f["mask_patches"][idx].copy()
-        
+
         image = Utils.extract_averaged_frames(image, num_frames=32)
         image = torch.from_numpy(image.astype(np.float32))
         masks = torch.from_numpy(masks.astype(np.uint8))
@@ -150,7 +176,9 @@ class iScatDataset2(Dataset):
         elif self.normalize is None:
             pass
         else:
-            raise ValueError("Invalid normalization method. Choose 'minmax' or 'zscore'.")
+            raise ValueError(
+                "Invalid normalization method. Choose 'minmax' or 'zscore'."
+            )
 
         if len(self.classes) == 1:
             mask = masks[self.classes[0]]
@@ -168,7 +196,7 @@ class iScatDataset2(Dataset):
         if self.boundary_mask:
             boundary = self.generate_boundary_mask(mask.numpy())
             boundary = torch.from_numpy(boundary.astype(np.float32))
-        
+
         if self.apply_augmentation:
             if random.random() > 0.5:
                 image = TF.hflip(image)
@@ -196,5 +224,7 @@ class iScatDataset2(Dataset):
         sobelx = cv2.Sobel(mask, cv2.CV_64F, 1, 0, ksize=3)
         sobely = cv2.Sobel(mask, cv2.CV_64F, 0, 1, ksize=3)
         boundary_mask = np.sqrt(sobelx**2 + sobely**2)
-        boundary_mask = (boundary_mask - boundary_mask.min()) / (boundary_mask.max() - boundary_mask.min() + 1e-8)
+        boundary_mask = (boundary_mask - boundary_mask.min()) / (
+            boundary_mask.max() - boundary_mask.min() + 1e-8
+        )
         return boundary_mask

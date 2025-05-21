@@ -1,4 +1,4 @@
-# import torch 
+# import torch
 
 # def distance_matrix(a, b):
 #     a_expanded = a.view(-1, 1)
@@ -17,7 +17,7 @@
 #     k_dist_xx = torch.sort(xx_distances, dim=1)[0][:, k]
 #     k_dist_xy = torch.sort(xy_distances, dim=1)[0][:, (k * k_multiplier).to(torch.int)]
 
-#     # optional: smoothen the distances 
+#     # optional: smoothen the distances
 #     # (so that it matters less whether a point is the i-th or the (i+1)-th closest neighbor)
 #     if smoothing_kernel != None:
 #             # torch conv1d demands a channel dimension, hence the (un)squeezing
@@ -43,9 +43,9 @@
 #     print(knn_divergence(example_points_a, example_points_c, k))
 #     print(knn_divergence(example_points_a, example_points_d, k))
 
-    
 
-import torch 
+import torch
+
 
 def distance_matrix(a, b):
     a_expanded = a.view(-1, 1)
@@ -53,7 +53,15 @@ def distance_matrix(a, b):
 
     return torch.abs(a_expanded - b_expanded)
 
-def knn_divergence(points_x:torch.Tensor, points_y:torch.Tensor, k_neighbors:torch.Tensor, smoothing_kernel=None,reduction='mean',method="absolute"):
+
+def knn_divergence(
+    points_x: torch.Tensor,
+    points_y: torch.Tensor,
+    k_neighbors: torch.Tensor,
+    smoothing_kernel=None,
+    reduction="mean",
+    method="absolute",
+):
     """
     Computes the KNN divergence between two sets of points.
     Args:
@@ -68,33 +76,45 @@ def knn_divergence(points_x:torch.Tensor, points_y:torch.Tensor, k_neighbors:tor
     """
     # Compute the distance matrices
     xx_distances = distance_matrix(points_x, points_x)
-    xy_distances = distance_matrix(points_x, points_y) # one row for every sample in x, one col for every sample in y
+    xy_distances = distance_matrix(
+        points_x, points_y
+    )  # one row for every sample in x, one col for every sample in y
 
     # if the sets have different sizes
     # e.g. y has twice as many points -> the distance to the 3rd closest point in x should be the same as the distance to the 6th point in y
     k_multiplier = points_y.shape[0] / points_x.shape[0]
 
     k_dist_xx = torch.sort(xx_distances, dim=1)[0][:, k_neighbors]
-    k_dist_xy = torch.sort(xy_distances, dim=1)[0][:, (k_neighbors * k_multiplier).to(torch.int)]
-    # optional: smoothen the distances 
+    k_dist_xy = torch.sort(xy_distances, dim=1)[0][
+        :, (k_neighbors * k_multiplier).to(torch.int)
+    ]
+    # optional: smoothen the distances
     # (so that it matters less whether a point is the i-th or the (i+1)-th closest neighbor)
-    if smoothing_kernel != None:
+    if smoothing_kernel is not None:
         # torch conv1d demands a channel dimension, hence the (un)squeezing
-        k_dist_xx = torch.nn.functional.conv1d(k_dist_xx.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)).flatten(1)
-        k_dist_xy = torch.nn.functional.conv1d(k_dist_xy.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)).flatten(1)
-    if method== "fraction":
+        k_dist_xx = torch.nn.functional.conv1d(
+            k_dist_xx.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)
+        ).flatten(1)
+        k_dist_xy = torch.nn.functional.conv1d(
+            k_dist_xy.unsqueeze(1), weight=smoothing_kernel.view(1, 1, -1)
+        ).flatten(1)
+    if method == "fraction":
         # scale-invariant, but trains less easily
-        output = (1 - k_dist_xx / k_dist_xy)**2
-    elif method== "absolute":
+        output = (1 - k_dist_xx / k_dist_xy) ** 2
+    elif method == "absolute":
         # trains more easily, but not scale-invariant. Can be useful as a first step.
-        output = (k_dist_xx - k_dist_xy)**2
+        output = (k_dist_xx - k_dist_xy) ** 2
     else:
-        raise ValueError("Invalid method. Choose either 'fraction' or 'absolute'.")
-    if reduction=='mean':
+        raise ValueError(
+            "Invalid method. Choose either 'fraction' or 'absolute'."
+        )
+    if reduction == "mean":
         return torch.mean(output)
-    elif reduction=='sum':
+    elif reduction == "sum":
         return torch.sum(output)
-    elif reduction=='none':
+    elif reduction == "none":
         return output
     else:
-        raise ValueError("Invalid reduction method. Choose either 'mean', 'sum', or 'none'.")
+        raise ValueError(
+            "Invalid reduction method. Choose either 'mean', 'sum', or 'none'."
+        )

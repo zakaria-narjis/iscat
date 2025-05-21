@@ -4,6 +4,7 @@ import os
 import torch
 from src.data_processing.utils import Utils
 
+
 class SegInference:
     def __init__(self, experiment_path, device):
         """
@@ -29,11 +30,11 @@ class SegInference:
             dict: Configuration dictionary.
         """
         config_path = os.path.join(experiment_path, "config.yaml")
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f)
         return config
-    
-    def load_model(self,model_path,config, device):
+
+    def load_model(self, model_path, config, device):
         """
         Load a trained model from a checkpoint file.
 
@@ -44,17 +45,31 @@ class SegInference:
         Returns:
             torch.nn.Module: Trained model.
         """
-        checkpoint = torch.load(model_path, map_location=device,weights_only=True)
-        model_name = config['model']['type']
-        if model_name == 'U_Net':
-            model = U_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
-        elif model_name == 'AttU_Net':
-            model = AttU_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
-        elif model_name == 'R2AttU_Net':
-            model = R2AttU_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
-        elif model_name == 'R2U_Net':
-            model = R2U_Net(img_ch=config['model']['in_channels'], output_ch=config['model']['out_channels'])
-        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        checkpoint = torch.load(
+            model_path, map_location=device, weights_only=True
+        )
+        model_name = config["model"]["type"]
+        if model_name == "U_Net":
+            model = U_Net(
+                img_ch=config["model"]["in_channels"],
+                output_ch=config["model"]["out_channels"],
+            )
+        elif model_name == "AttU_Net":
+            model = AttU_Net(
+                img_ch=config["model"]["in_channels"],
+                output_ch=config["model"]["out_channels"],
+            )
+        elif model_name == "R2AttU_Net":
+            model = R2AttU_Net(
+                img_ch=config["model"]["in_channels"],
+                output_ch=config["model"]["out_channels"],
+            )
+        elif model_name == "R2U_Net":
+            model = R2U_Net(
+                img_ch=config["model"]["in_channels"],
+                output_ch=config["model"]["out_channels"],
+            )
+        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
         model.to(device)
         model.eval()
         return model
@@ -69,17 +84,21 @@ class SegInference:
         Returns:
             np.ndarray: Predicted mask.
         """
-        x = Utils.extract_averaged_frames(x, num_frames=self.config['model']['in_channels']) # Extract averaged frames
-        x = Utils.z_score_normalize(x, mean=x.mean(), std=x.std()) # Normalize the image
+        x = Utils.extract_averaged_frames(
+            x, num_frames=self.config["model"]["in_channels"]
+        )  # Extract averaged frames
+        x = Utils.z_score_normalize(
+            x, mean=x.mean(), std=x.std()
+        )  # Normalize the image
         x = torch.Tensor(x)
         if x.dim() == 3:
-            x = x.unsqueeze(0) # Add batch dimension       
+            x = x.unsqueeze(0)  # Add batch dimension
         with torch.no_grad():
             x = x.to(self.device)
-            pred = self.model(x) # shape: (B, C, H, W)
-            pred = torch.argmax(pred, dim=1) # shape: (B, H, W)
+            pred = self.model(x)  # shape: (B, C, H, W)
+            pred = torch.argmax(pred, dim=1)  # shape: (B, H, W)
             if x.dim() == 3:
-                pred = pred.squeeze(0) # Remove batch dimension
+                pred = pred.squeeze(0)  # Remove batch dimension
             pred = pred.cpu().numpy()
 
         return pred
