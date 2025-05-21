@@ -643,6 +643,7 @@ class CellViT(nn.Module):
 
         self.encoder = ViTCellViT(
             patch_size=self.patch_size,
+            in_chans=self.input_channels,
             num_classes=self.num_classes,
             embed_dim=self.embed_dim,
             depth=self.depth,
@@ -667,7 +668,7 @@ class CellViT(nn.Module):
 
         # version with shared skip_connections
         self.decoder0 = nn.Sequential(
-            Conv2DBlock(3, 32, 3, dropout=self.drop_rate),
+            Conv2DBlock(self.input_channels, 32, 3, dropout=self.drop_rate),
             Conv2DBlock(32, 64, 3, dropout=self.drop_rate),
         )  # skip connection after positional encoding, shape should be H, W, 64
         self.decoder1 = nn.Sequential(
@@ -723,7 +724,8 @@ class CellViT(nn.Module):
         if retrieve_tokens:
             out_dict["tokens"] = z4
 
-        return out_dict
+        # return out_dict
+        return out_dict["binary_map"]
     
     def _forward_upsample(
         self,
