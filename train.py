@@ -18,7 +18,7 @@ from sklearn.model_selection import train_test_split
 import h5py
 from src.models.Unet_networks import AttU_Net, R2AttU_Net, R2U_Net, U_Net
 from src.metrics import batch_multiclass_metrics
-from test import test_model
+from src.testing import test_model
 import json
 
 def save_metrics_to_json(metrics_dict, output_folder):

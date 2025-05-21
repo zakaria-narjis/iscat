@@ -1,6 +1,3 @@
-"""
-write  a test script that uses argparse and src.infrence.inference.SegInference the script should take as arg an  nd2  path  and experiment path, the nd2 image has (200,H,W) shape so you init SegInference using the config file in the experiment you can get the image size that the model was trained on. You must create first a function that cut the image into image_size by image_size regions for example (200,256,256)
-"""
 import torch
 import numpy as np
 import monai
