@@ -70,6 +70,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     tif_tuples = get_fluo_paths(args.base_path, args.datatype)
+    print(tif_tuples)
     Utils.generate_np_masks(
         tif_tuples, seg_args=None, seg_method=args.seg_method
     )
