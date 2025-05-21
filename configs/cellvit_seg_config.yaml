@@ -10,12 +10,13 @@ data:
   dataset_folder_path: "/data_ssd2/iscat_data"
 
   train_dataset:
-    num_workers: 12
+    num_workers: 2
     apply_augmentation: true
     normalize: ${data.normalize} # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
   valid_dataset:
+    num_workers: 2
     apply_augmentation: false
     normalize: ${data.normalize}  # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
