@@ -56,5 +56,5 @@ model:
 
 logging:
   tensorboard:
-    log_dir: "experiments/runs"
+    log_dir: "experiments/runs/segmentation/commercial_beads"
 
