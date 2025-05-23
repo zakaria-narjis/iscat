@@ -150,7 +150,6 @@ def aggregate_test_results_ddp(test_results, main_rank=0):
 
     if dist.get_rank() != main_rank:
         return None  # Only main rank processes results
-
     agg = defaultdict(list)
     for res in all_results:
         for group_key, subdict in res.items():

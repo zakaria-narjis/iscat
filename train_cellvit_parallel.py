@@ -31,7 +31,7 @@ def save_metrics_to_json(metrics_dict, output_folder):
         output_folder (str): Folder path to save the JSON file
 
     Returns:
-        str: Full path to the saved JSON file
+        full path (str): Full path to the saved JSON file
     """
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
@@ -345,7 +345,7 @@ def ddp_main(rank, world_size, args, config):
     
     test_results = test_model(model, test_loader, device, num_classes)
     # Aggregate test results across all processes
-    test_results = aggregate_test_results_ddp(test_results, world_size)
+    test_results = aggregate_test_results_ddp(test_results)
     # Only rank 0 performs visualization
     if rank == 0:     
         save_metrics_to_json(test_results, experiment_dir)
