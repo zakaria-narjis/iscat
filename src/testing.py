@@ -4,7 +4,9 @@ import monai
 from monai.metrics import DiceMetric
 from monai.networks.utils import one_hot
 from src.metrics import batch_multiclass_metrics
-
+import torch.distributed as dist
+import numpy as np
+from collections import defaultdict
 
 def test_model(model, test_loader, device, num_classes):
     """
@@ -141,3 +143,36 @@ def test_model(model, test_loader, device, num_classes):
             "class_metrics": class_precision_recall,
         },
     }
+
+def aggregate_test_results_ddp(test_results, main_rank=0):
+    all_results = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(all_results, test_results)
+
+    if dist.get_rank() != main_rank:
+        return None  # Only main rank processes results
+
+    agg = defaultdict(list)
+    for res in all_results:
+        for group_key, subdict in res.items():
+            for metric_key, value in subdict.items():
+                agg[(group_key, metric_key)].append(value)
+
+    # Combine
+    result = {
+        "segmentation_scores": {
+            "mIoU": float(np.nanmean(agg[("segmentation_scores", "mIoU")])),
+            "dice_mean": float(np.nanmean(agg[("segmentation_scores", "dice_mean")])),
+            "dice_per_class": list(np.nanmean(agg[("segmentation_scores", "dice_per_class")], axis=0)),
+        },
+        "detection_scores": {
+            "total_precision": float(np.mean(agg[("detection_scores", "total_precision")])),
+            "total_recall": float(np.mean(agg[("detection_scores", "total_recall")])),
+            "total_f1": float(np.mean(agg[("detection_scores", "total_f1")])),
+            "total_tp": int(np.sum(agg[("detection_scores", "total_tp")])),
+            "total_fp": int(np.sum(agg[("detection_scores", "total_fp")])),
+            "total_fn": int(np.sum(agg[("detection_scores", "total_fn")])),
+            "class_metrics": [item for sublist in agg[("detection_scores", "class_metrics")] for item in sublist],
+        },
+    }
+
+    return result

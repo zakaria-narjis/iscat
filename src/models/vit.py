@@ -683,7 +683,7 @@ class CellViT(nn.Module):
         self.decoder3 = nn.Sequential(
             Deconv2DBlock(self.embed_dim, self.bottleneck_dim, dropout=self.drop_rate)
         )  # skip connection 3
-        self.binary_map_decoder = self.create_upsampling_branch(2) 
+        self.binary_map_decoder = self.create_upsampling_branch(self.num_classes) 
         
     def forward(self, x: torch.Tensor, retrieve_tokens: bool = False) -> dict:
         """Forward pass

@@ -4,7 +4,7 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from src.data_processing.dataset import iScatDataset
-from src.trainers.cellvit_trainer import Trainer
+from src.trainers.cellvit_trainer_n import Trainer
 from src.data_processing.utils import Utils
 import re
 from datetime import datetime
@@ -16,11 +16,11 @@ from src.visualization import predict, batch_plot_images_with_masks
 from sklearn.model_selection import train_test_split
 import h5py
 from src.models.vit import CellViT
-from src.testing import test_model
+from src.testing import test_model, aggregate_test_results_ddp
 import json
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+from torch import nn
 
 def save_metrics_to_json(metrics_dict, output_folder):
     """
@@ -210,7 +210,7 @@ def ddp_main(rank, world_size, args, config):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
     
-    set_random_seed(config["seed"])
+    set_random_seed(config["seed"]+rank)
     
     device = torch.device(f"cuda:{rank}")
     print(f"[RANK {rank}] Starting ddp_main with PID {os.getpid()}")
@@ -309,8 +309,8 @@ def ddp_main(rank, world_size, args, config):
         num_heads=config["model"]["num_heads"],
         extract_layers=config["model"]["extract_layers"],
     ).to(device)
-    
-    model = DDP(model, device_ids=[rank])
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model = DDP(model, device_ids=[rank],find_unused_parameters=True)
 
     # Calculate class weights if needed
     if config["training"]["class_weights"]["use"]:
@@ -333,6 +333,8 @@ def ddp_main(rank, world_size, args, config):
         experiment_dir=experiment_dir,
         class_weights=class_weights,
         verbose=(rank == 0),  # Add verbose parameter if Trainer supports it
+        rank=rank,
+        world_size=world_size,
     )
 
     # Train the model
@@ -340,9 +342,12 @@ def ddp_main(rank, world_size, args, config):
         train_loader, val_loader, num_epochs=config["training"]["num_epochs"]
     )
 
-    # Only rank 0 performs testing and visualization
-    if rank == 0:
-        test_results = test_model(model, test_loader, device, num_classes)
+    
+    test_results = test_model(model, test_loader, device, num_classes)
+    # Aggregate test results across all processes
+    test_results = aggregate_test_results_ddp(test_results, world_size)
+    # Only rank 0 performs visualization
+    if rank == 0:     
         save_metrics_to_json(test_results, experiment_dir)
         
         all_images, all_pred_masks, all_gt_masks = predict(
@@ -359,6 +364,7 @@ def ddp_main(rank, world_size, args, config):
 
     # Synchronize all processes before cleanup
     dist.barrier()
+    print(f"[RANK {rank}] Finished processing, cleaning up.")
     dist.destroy_process_group()
 
 

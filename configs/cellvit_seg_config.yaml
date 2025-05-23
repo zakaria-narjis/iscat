@@ -22,8 +22,7 @@ data:
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 training:
-  num_workers: 12
-  batch_size: 32
+  batch_size: 40
   num_epochs: 400
   train_split_size: 0.7
   device: "cuda:4" # Useless if using DDP
