@@ -618,6 +618,7 @@ class CellViT(nn.Module):
         depth: int,
         num_heads: int,
         extract_layers: List,
+        patch_size: int = 16,
         mlp_ratio: float = 4,
         qkv_bias: bool = True,
         drop_rate: float = 0,
@@ -628,7 +629,7 @@ class CellViT(nn.Module):
         super().__init__()
         assert len(extract_layers) == 4, "Please provide 4 layers for skip connections"
 
-        self.patch_size = 16
+        self.patch_size = patch_size
         self.num_classes = num_classes
         self.embed_dim = embed_dim
         self.input_channels = input_channels
@@ -757,6 +758,14 @@ class CellViT(nn.Module):
         b1 = self.decoder1(z1)
         b1 = branch_decoder.decoder1_upsampler(torch.cat([b1, b2], dim=1))
         b0 = self.decoder0(z0)
+        # Fix: Interpolate b1 to match b0's spatial dimensions
+        if b1.shape[2:] != b0.shape[2:]:
+            b1 = nn.functional.interpolate(
+                b1, 
+                size=b0.shape[2:], 
+                mode='bilinear', 
+                align_corners=False
+            )
         branch_output = branch_decoder.decoder0_header(torch.cat([b0, b1], dim=1))
 
         return branch_output

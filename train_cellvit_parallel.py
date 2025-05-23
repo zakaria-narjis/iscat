@@ -274,6 +274,7 @@ def ddp_main(rank, world_size, args, config):
         apply_augmentation=config["data"]["train_dataset"]["apply_augmentation"],
         normalize=config["data"]["train_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
+        chunk_size=config["data"]["z_chunk_size"],
     )
 
     valid_dataset = iScatDataset(
@@ -283,6 +284,7 @@ def ddp_main(rank, world_size, args, config):
         apply_augmentation=config["data"]["valid_dataset"]["apply_augmentation"],
         normalize=config["data"]["valid_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
+        chunk_size=config["data"]["z_chunk_size"],
     )
     
     test_dataset = iScatDataset(
@@ -292,6 +294,7 @@ def ddp_main(rank, world_size, args, config):
         apply_augmentation=False,
         normalize=config["data"]["train_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
+        chunk_size=config["data"]["z_chunk_size"],
     )
 
     # Create dataloaders with distributed samplers
@@ -303,6 +306,7 @@ def ddp_main(rank, world_size, args, config):
     # Create model and wrap with DDP
     model = CellViT(
         num_classes=num_classes,
+        patch_size=config["model"]["patch_size"],
         embed_dim=config["model"]["embed_dim"],
         input_channels=in_channels,
         depth=config["model"]["depth"],

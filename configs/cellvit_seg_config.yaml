@@ -10,27 +10,27 @@ data:
   dataset_folder_path: "/data_ssd2/iscat_data"
 
   train_dataset:
-    num_workers: 2
+    num_workers: 3
     apply_augmentation: true
     normalize: ${data.normalize} # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
   valid_dataset:
-    num_workers: 2
+    num_workers: 3
     apply_augmentation: false
     normalize: ${data.normalize}  # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 training:
-  batch_size: 40
+  batch_size: 10
   num_epochs: 400
   train_split_size: 0.7
   device: "cuda:4" # Useless if using DDP
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
-      alpha: 0.3
-      beta: 0.7
+      alpha: 0.4
+      beta: 0.6
       gamma: 1.0
       lambda_ce: 0.1
       lambda_dice: 1.0
@@ -54,6 +54,7 @@ testing:
 
 model:
   type: "CellVIT"
+  patch_size: 8
   embed_dim: 384
   depth: 12
   num_heads: 6
