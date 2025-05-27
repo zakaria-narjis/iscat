@@ -4,7 +4,7 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from src.data_processing.dataset import iScatDataset
-from src.trainers.cellvit_trainer_n import Trainer
+from src.trainers.cellvit_trainer import Trainer
 from src.data_processing.utils import Utils
 import re
 from datetime import datetime

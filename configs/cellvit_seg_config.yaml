@@ -24,13 +24,13 @@ data:
 training:
   batch_size: 10
   num_epochs: 400
-  train_split_size: 0.7
+  train_split_size: 0.8
   device: "cuda:4" # Useless if using DDP
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
-      alpha: 0.4
-      beta: 0.6
+      alpha: 0.3
+      beta: 0.7
       gamma: 1.0
       lambda_ce: 0.1
       lambda_dice: 1.0
@@ -41,12 +41,14 @@ training:
     type: "Adam"
     parameters:
       lr: 1e-4 #1e-4
+      weight_decay: 1e-4
+      betas: [0.85, 0.85]
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
       mode: "min"
       factor: 0.1
-      patience: 8
+      patience: 5
   early_stopping:
     enabled: true
     patience: 20

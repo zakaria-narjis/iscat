@@ -9,34 +9,10 @@ from monai.networks.utils import one_hot
 from tqdm import tqdm
 import logging
 from src.metrics import batch_multiclass_metrics
-from src.trainers.utils import is_main_process
 import torch.distributed as dist
 
 class Trainer:
-    def __init__(
-        self,
-        model: nn.Module,
-        device: torch.device,
-        config: dict,
-        experiment_dir: str,
-        class_weights=None,
-        writer: SummaryWriter = None,
-        verbose: bool = True,
-        rank: int = 0,
-        world_size: int = 1,
-    ):
-        """
-        Args:
-            model (nn.Module): PyTorch model to train.
-            device (torch.device): Device to use for training.
-            config (dict): Configuration dictionary.
-            experiment_dir (str): Directory to save logs and checkpoints.
-            class_weights (list): Class weights for loss computation.
-            writer (SummaryWriter): Tensorboard writer.
-            verbose (bool): If False, suppress output logs.
-            rank (int): Process rank for distributed training.
-            world_size (int): Total number of processes for distributed training.
-        """
+    def __init__(self, model, device, config, experiment_dir, class_weights=None, writer=None, verbose=True, rank=0, world_size=1):
         self.num_classes = config["num_classes"]
         self.model = model.to(device)
         self.device = device
@@ -48,27 +24,16 @@ class Trainer:
         self.world_size = world_size
         self.is_main_process = rank == 0
 
-        # Configure logging
         self.logger = logging.getLogger(__name__)
         log_level = logging.DEBUG if verbose and self.is_main_process else logging.WARNING
-        logging.basicConfig(
-            level=log_level, format="%(asctime)s - %(levelname)s - %(message)s"
-        )
+        logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
-        # Initialize loss function
         self.loss = self._initialize_loss()
-
-        # Initialize metrics
         self.miou_metric = MeanIoU(include_background=True, reduction="mean")
-        self.optimizer = optim.Adam(
-            model.parameters(), lr=self.config["optimizer"]["parameters"]["lr"]
-        )
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer,
-            mode="min",
-            factor=self.config["scheduler"]["parameters"]["factor"],
-            patience=self.config["scheduler"]["parameters"]["patience"],
-        )
+        self.optimizer = optim.AdamW(model.parameters(), lr=config["optimizer"]["parameters"]["lr"], 
+                                    weight_decay=config["optimizer"]["parameters"]["weight_decay"],
+                                    betas=config["optimizer"]["parameters"]["betas"])
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode="min", factor=config["scheduler"]["parameters"]["factor"], patience=config["scheduler"]["parameters"]["patience"])
 
         self.writer = writer
         self.checkpoint_path = os.path.join(experiment_dir, "best_model.pth") if experiment_dir else None
@@ -78,393 +43,189 @@ class Trainer:
             if self.loss_type == "crossentropy":
                 return nn.BCEWithLogitsLoss()
             elif self.loss_type == "dice":
-                return DiceLoss(
-                    sigmoid=True,
-                    squared_pred=True,
-                    batch=True,
-                    reduction="mean",
-                )
+                return DiceLoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean")
             elif self.loss_type == "dicece":
-                return DiceCELoss(
-                    sigmoid=True,
-                    squared_pred=True,
-                    batch=True,
-                    reduction="mean",
-                    weight=self.class_weights,
-                    lambda_ce=self.config["loss"]["parameters"]["lambda_ce"],
-                    lambda_dice=self.config["loss"]["parameters"][
-                        "lambda_dice"
-                    ],
-                )
+                return DiceCELoss(sigmoid=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights, lambda_ce=self.config["loss"]["parameters"]["lambda_ce"], lambda_dice=self.config["loss"]["parameters"]["lambda_dice"])
             elif self.loss_type == "tversky":
-                if self.is_main_process:
-                    self.logger.info("Using Tversky Loss ")
-                return TverskyLoss(
-                    sigmoid=True,
-                    batch=True,
-                    reduction="mean",
-                    alpha=self.config["loss"]["parameters"]["alpha"],
-                    beta=self.config["loss"]["parameters"]["beta"],
-                )
-            else:
-                raise ValueError(f"Invalid loss type: {self.loss_type}")
+                return TverskyLoss(sigmoid=True, batch=True, reduction="mean", alpha=self.config["loss"]["parameters"]["alpha"], beta=self.config["loss"]["parameters"]["beta"])
         else:
             if self.loss_type == "crossentropy":
-                if self.is_main_process:
-                    self.logger.info("Using CrossEntropy Loss ")
                 return nn.CrossEntropyLoss(weight=self.class_weights)
             elif self.loss_type == "dice":
-                if self.is_main_process:
-                    self.logger.info("Using Dice Loss ")
-                return DiceLoss(
-                    softmax=True,
-                    squared_pred=True,
-                    batch=True,
-                    reduction="mean",
-                    include_background=False,
-                )
+                return DiceLoss(softmax=True, squared_pred=True, batch=True, reduction="mean", include_background=False)
             elif self.loss_type == "tversky":
-                if self.is_main_process:
-                    self.logger.info("Using Tversky Loss ")
-                return TverskyLoss(
-                    softmax=True,
-                    batch=True,
-                    reduction="mean",
-                    alpha=self.config["loss"]["parameters"]["alpha"],
-                    beta=self.config["loss"]["parameters"]["beta"],
-                    include_background=False,
-                )
+                return TverskyLoss(softmax=True, batch=True, reduction="mean", alpha=self.config["loss"]["parameters"]["alpha"], beta=self.config["loss"]["parameters"]["beta"], include_background=False)
             elif self.loss_type == "dicece":
-                if self.is_main_process:
-                    self.logger.info("Using Dice CrossEntropy Loss ")
-                return DiceCELoss(
-                    softmax=True,
-                    squared_pred=True,
-                    batch=True,
-                    reduction="mean",
-                    weight=self.class_weights,
-                )
-            else:
-                raise ValueError(f"Invalid loss type: {self.loss_type}")
+                return DiceCELoss(softmax=True, squared_pred=True, batch=True, reduction="mean", weight=self.class_weights)
 
     def compute_loss(self, predictions, targets):
-        """
-        Compute loss given model predictions and target masks.
-        Args:
-            predictions (torch.Tensor): Model predictions. Shape: [B, N, H, W].
-            targets (torch.Tensor): Target masks. Shape: [B, 1, H, W].
-        """
         if len(targets.shape) == 3:
             targets = targets.unsqueeze(1)
         if self.num_classes > 1:
             targets = one_hot(targets, num_classes=self.num_classes, dim=1)
         return self.loss(predictions, targets)
 
+    @torch.no_grad()
     def compute_metrics(self, predictions, targets):
         if len(targets.shape) == 3:
             targets = targets.unsqueeze(1)
         if self.num_classes > 1:
-            pred_one_hot = one_hot(
-                predictions.argmax(dim=1, keepdim=True),
-                num_classes=self.num_classes,
-            )  # [B, N, H, W]
-            target_one_hot = one_hot(
-                targets, num_classes=self.num_classes
-            )  # [B, N, H, W]
+            pred_one_hot = one_hot(predictions.argmax(dim=1, keepdim=True), num_classes=self.num_classes)
+            target_one_hot = one_hot(targets, num_classes=self.num_classes)
         else:
-            pred_one_hot = torch.sigmoid(predictions) > 0.5  # [B, 1, H, W]
+            pred_one_hot = torch.sigmoid(predictions) > 0.5
             pred_one_hot = one_hot(pred_one_hot, num_classes=2)
             target_one_hot = one_hot(targets, num_classes=2)
-
         metric = self.miou_metric(pred_one_hot, target_one_hot)
         return metric.nanmean().item()
 
     def train_epoch(self, train_loader):
         self.model.train()
-        total_loss = 0.0
-        total_miou = 0.0
-
-        for batch_idx, (images, masks) in enumerate(train_loader):
+        total_loss = torch.tensor(0.0, device=self.device)
+        total_miou = torch.tensor(0.0, device=self.device)
+        num_batches = torch.tensor(0.0, device=self.device)
+        for images, masks in train_loader:
             images, masks = images.to(self.device), masks.to(self.device)
             if len(masks.shape) == 3:
                 masks = masks.unsqueeze(1)
-            
-            # Forward pass and loss computation on GPU
             self.optimizer.zero_grad()
             predictions = self.model(images)
             loss = self.compute_loss(predictions, masks)
             loss.backward()
             self.optimizer.step()
-
-            # Loss and mIoU can stay on GPU if they're simple operations
-            total_loss += loss.item()
-            total_miou += self.compute_metrics(predictions, masks)
-
-        # Compute final metrics once at the end
-        n_batches = len(train_loader)
-        avg_loss = total_loss / n_batches
-        avg_miou = total_miou / n_batches
-
-        # Gather metrics from all processes
-        if self.world_size > 1:
-            all_losses = [None] * self.world_size
-            all_mious = [None] * self.world_size
-            dist.all_gather_object(all_losses, avg_loss)
-            dist.all_gather_object(all_mious, avg_miou)
-            
-            if self.is_main_process:
-                # Average across all processes
-                avg_loss = sum(all_losses) / len(all_losses)
-                avg_miou = sum(all_mious) / len(all_mious)
-
-        return avg_loss, avg_miou
+            total_loss += loss.detach()
+            miou = torch.tensor(self.compute_metrics(predictions, masks), device=self.device)
+            total_miou += miou
+            num_batches += 1
+        return total_loss.item(), total_miou.item(), num_batches.item()
 
     @torch.no_grad()
     def validate(self, val_loader):
         self.model.eval()
-        total_loss = 0.0
-        total_miou = 0.0
-
-        # Initialize dictionaries for class-specific metrics
+        total_loss = torch.tensor(0.0, device=self.device)
+        total_miou = torch.tensor(0.0, device=self.device)
+        num_batches = torch.tensor(0.0, device=self.device)
         class_metrics = {}
-        # Initialize total particle metric counters
         total_tp = total_fp = total_fn = 0
 
         for images, masks in val_loader:
             images, masks = images.to(self.device), masks.to(self.device)
-            # Forward pass on GPU
             predictions = self.model(images)
+            loss = self.compute_loss(predictions, masks)
+            miou = torch.tensor(self.compute_metrics(predictions, masks), device=self.device)
+            total_loss += loss.detach()
+            total_miou += miou
+            num_batches += 1
 
-            # Compute loss and mIoU on GPU
-            total_loss += self.compute_loss(predictions, masks).item()
-            total_miou += self.compute_metrics(predictions, masks)
-
-            # Convert predictions and masks to CPU numpy arrays
             if self.num_classes == 1:
-                pred_masks = (
-                    torch.sigmoid(predictions).cpu().numpy() > 0.5
-                )  # [B, 1, H, W]
-                pred_masks = pred_masks.squeeze(1)  # [B, H, W]
+                pred_masks = (torch.sigmoid(predictions).cpu().numpy() > 0.5).squeeze(1)
             else:
-                pred_masks = (
-                    torch.argmax(predictions, dim=1).cpu().numpy()
-                )  # [B, H, W]
+                pred_masks = torch.argmax(predictions, dim=1).cpu().numpy()
             gt_masks = masks.cpu().numpy()
 
-            # Process entire batch at once
             batch_metrics = batch_multiclass_metrics(pred_masks, gt_masks)
-
-            # Update metrics for each class
             for class_id, (tp, fp, fn) in batch_metrics.items():
                 if class_id not in class_metrics:
                     class_metrics[class_id] = {"tp": 0, "fp": 0, "fn": 0}
                 class_metrics[class_id]["tp"] += tp
                 class_metrics[class_id]["fp"] += fp
                 class_metrics[class_id]["fn"] += fn
-
-                # Update total counters
                 total_tp += tp
                 total_fp += fp
                 total_fn += fn
 
-        # Compute final metrics
-        n_batches = len(val_loader)
-        avg_loss = total_loss / n_batches
-        avg_miou = total_miou / n_batches
-
-        # Gather metrics from all processes
-        if self.world_size > 1:
-            # Gather basic metrics
-            all_losses = [None] * self.world_size
-            all_mious = [None] * self.world_size
-            all_class_metrics = [None] * self.world_size
-            all_total_metrics = [None] * self.world_size
-            
-            dist.all_gather_object(all_losses, avg_loss)
-            dist.all_gather_object(all_mious, avg_miou)
-            dist.all_gather_object(all_class_metrics, class_metrics)
-            dist.all_gather_object(all_total_metrics, (total_tp, total_fp, total_fn))
-            
-            if self.is_main_process:
-                # Average losses and mious
-                avg_loss = sum(all_losses) / len(all_losses)
-                avg_miou = sum(all_mious) / len(all_mious)
-                
-                # Aggregate class metrics
-                aggregated_class_metrics = {}
-                for class_metrics_single in all_class_metrics:
-                    for class_id, metrics in class_metrics_single.items():
-                        if class_id not in aggregated_class_metrics:
-                            aggregated_class_metrics[class_id] = {"tp": 0, "fp": 0, "fn": 0}
-                        aggregated_class_metrics[class_id]["tp"] += metrics["tp"]
-                        aggregated_class_metrics[class_id]["fp"] += metrics["fp"]
-                        aggregated_class_metrics[class_id]["fn"] += metrics["fn"]
-                
-                class_metrics = aggregated_class_metrics
-                
-                # Aggregate total metrics
-                total_tp = sum(metrics[0] for metrics in all_total_metrics)
-                total_fp = sum(metrics[1] for metrics in all_total_metrics)
-                total_fn = sum(metrics[2] for metrics in all_total_metrics)
-
-        # Compute class-specific precision and recall
-        class_precision_recall = {}
-        for class_id, metrics in class_metrics.items():
-            tp = metrics["tp"]
-            fp = metrics["fp"]
-            fn = metrics["fn"]
-
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            f1 = (
-                2 * (precision * recall) / (precision + recall)
-                if (precision + recall) > 0
-                else 0
-            )
-            class_precision_recall[class_id] = {
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-            }
-
-        # Compute total precision and recall
-        total_precision = (
-            total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
-        )
-        total_recall = (
-            total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-        )
-        total_f1 = (
-            2
-            * (total_precision * total_recall)
-            / (total_precision + total_recall)
-            if (total_precision + total_recall) > 0
-            else 0
-        )
-        return (
-            avg_loss,
-            avg_miou,
-            total_precision,
-            total_recall,
-            total_f1,
-            class_precision_recall,
-        )
+        return total_loss.item(), total_miou.item(), num_batches.item(), total_tp, total_fp, total_fn, class_metrics
 
     def train(self, train_loader, val_loader, num_epochs):
         best_val_loss = float("inf")
         no_improve = 0
-        
-        for epoch in tqdm(
-            range(num_epochs),
-            disable=not (self.logger.isEnabledFor(logging.DEBUG) and self.is_main_process),
-        ):
-            # Set epoch for distributed sampler
+
+        for epoch in tqdm(range(num_epochs), disable=not (self.logger.isEnabledFor(logging.DEBUG) and self.is_main_process)):
             if hasattr(train_loader.sampler, 'set_epoch'):
                 train_loader.sampler.set_epoch(epoch)
-            
-            train_loss, train_miou = self.train_epoch(train_loader)
-            (
-                val_loss,
-                val_miou,
-                val_precision,
-                val_recall,
-                val_f1,
-                class_metrics,
-            ) = self.validate(val_loader)
 
-            # Only main process handles scheduling, logging, and checkpointing
+            train_loss, train_miou, train_batches = self.train_epoch(train_loader)
+            val_loss, val_miou, val_batches, total_tp, total_fp, total_fn, class_metrics = self.validate(val_loader)
+
+            # Distributed reduction starts here
+            tensors = [
+                torch.tensor(train_loss, device=self.device),
+                torch.tensor(train_miou, device=self.device),
+                torch.tensor(train_batches, device=self.device),
+                torch.tensor(val_loss, device=self.device),
+                torch.tensor(val_miou, device=self.device),
+                torch.tensor(val_batches, device=self.device),
+                torch.tensor(total_tp, device=self.device),
+                torch.tensor(total_fp, device=self.device),
+                torch.tensor(total_fn, device=self.device)
+            ]
+
+            gathered = [[torch.zeros_like(t) for _ in range(self.world_size)] for t in tensors]
+            for i, t in enumerate(tensors):
+                dist.all_gather(gathered[i], t)
+
+            class_metrics_list = [None for _ in range(self.world_size)]
+            dist.all_gather_object(class_metrics_list, class_metrics)
+
             if self.is_main_process:
-                self.scheduler.step(val_loss)
+                gathered_values = [sum([v.item() for v in group]) for group in gathered]
+                train_loss = gathered_values[0] / gathered_values[2]
+                train_miou = gathered_values[1] / gathered_values[2]
+                val_loss = gathered_values[3] / gathered_values[5]
+                val_miou = gathered_values[4] / gathered_values[5]
+                total_tp, total_fp, total_fn = gathered_values[6], gathered_values[7], gathered_values[8]
 
+                merged_class_metrics = {}
+                for metrics in class_metrics_list:
+                    for class_id, stats in metrics.items():
+                        if class_id not in merged_class_metrics:
+                            merged_class_metrics[class_id] = {"tp": 0, "fp": 0, "fn": 0}
+                        merged_class_metrics[class_id]["tp"] += stats["tp"]
+                        merged_class_metrics[class_id]["fp"] += stats["fp"]
+                        merged_class_metrics[class_id]["fn"] += stats["fn"]
+
+                class_metrics = merged_class_metrics
+                total_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
+                total_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
+                total_f1 = 2 * (total_precision * total_recall) / (total_precision + total_recall) if (total_precision + total_recall) > 0 else 0
+
+                self.scheduler.step(val_loss)
                 if self.writer is not None:
-                    # Log general metrics
                     self.writer.add_scalar("Train/Loss", train_loss, epoch)
                     self.writer.add_scalar("Train/mIoU", train_miou, epoch)
                     self.writer.add_scalar("Validation/Loss", val_loss, epoch)
                     self.writer.add_scalar("Validation/mIoU", val_miou, epoch)
-                    self.writer.add_scalar(
-                        "Learning Rate", self.optimizer.param_groups[0]["lr"], epoch
-                    )
+                    self.writer.add_scalar("Learning Rate", self.optimizer.param_groups[0]["lr"], epoch)
+                    self.writer.add_scalar("Validation/Total_F1", total_f1, epoch)
+                    self.writer.add_scalar("Validation/Total_Precision", total_precision, epoch)
+                    self.writer.add_scalar("Validation/Total_Recall", total_recall, epoch)
 
-                    # Log total precision and recall
-                    self.writer.add_scalar("Validation/Total_F1", val_f1, epoch)
-                    self.writer.add_scalar(
-                        "Validation/Total_Precision", val_precision, epoch
-                    )
-                    self.writer.add_scalar(
-                        "Validation/Total_Recall", val_recall, epoch
-                    )
-
-                    # Log class-specific metrics
                     for class_id, metrics in class_metrics.items():
-                        self.writer.add_scalar(
-                            f"Validation/Class_{class_id}_Precision",
-                            metrics["precision"],
-                            epoch,
-                        )
-                        self.writer.add_scalar(
-                            f"Validation/Class_{class_id}_Recall",
-                            metrics["recall"],
-                            epoch,
-                        )
-                        self.writer.add_scalar(
-                            f"Validation/Class_{class_id}_F1", metrics["f1"], epoch
-                        )
+                        self.writer.add_scalar(f"Validation/Class_{class_id}_Precision", metrics["tp"] / (metrics["tp"] + metrics["fp"] + 1e-8), epoch)
+                        self.writer.add_scalar(f"Validation/Class_{class_id}_Recall", metrics["tp"] / (metrics["tp"] + metrics["fn"] + 1e-8), epoch)
+                        p = metrics["tp"] / (metrics["tp"] + metrics["fp"] + 1e-8)
+                        r = metrics["tp"] / (metrics["tp"] + metrics["fn"] + 1e-8)
+                        f1 = 2 * (p * r) / (p + r + 1e-8)
+                        self.writer.add_scalar(f"Validation/Class_{class_id}_F1", f1, epoch)
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     if self.checkpoint_path:
-                        torch.save(
-                            {
-                                "epoch": epoch,
-                                "model_state_dict": self.model.module.state_dict() if hasattr(self.model, 'module') else self.model.state_dict(),
-                                "optimizer_state_dict": self.optimizer.state_dict(),
-                                "val_miou": val_miou,
-                                "val_loss": val_loss,
-                            },
-                            self.checkpoint_path,
-                        )
+                        torch.save({
+                            "epoch": epoch,
+                            "model_state_dict": self.model.module.state_dict() if hasattr(self.model, 'module') else self.model.state_dict(),
+                            "optimizer_state_dict": self.optimizer.state_dict(),
+                            "val_miou": val_miou,
+                            "val_loss": val_loss,
+                        }, self.checkpoint_path)
                     no_improve = 0
                 else:
                     no_improve += 1
+                self.logger.info(f"Train Loss: {train_loss:.4f}, Train mIoU: {train_miou:.4f}, Val Loss: {val_loss:.4f}, Val mIoU: {val_miou:.4f}")
+                self.logger.info(f"Total F1: {total_f1:.4f}, Total Precision: {total_precision:.4f}, Total Recall: {total_recall:.4f}")
+                self.logger.info(f"LR: {self.optimizer.param_groups[0]['lr']:.2e}, Early Stopping No Improve: {no_improve}/{self.earlystoping_patience}")
 
-                # Log metrics for each class
-                self.logger.info(
-                    f"Epoch {epoch+1}/{num_epochs}, "
-                    f"Train Loss: {train_loss:.4f}, "
-                    f"Train mIoU: {train_miou:.4f}, "
-                    f"Val Loss: {val_loss:.4f}, "
-                    f"Val mIoU: {val_miou:.4f}, "
-                    f"LR: {self.optimizer.param_groups[0]['lr']:.2e}"
-                )
-
-                self.logger.info(
-                    f"Total F1: {val_f1:.4f}, "
-                    f"Total Precision: {val_precision:.4f}, "
-                    f"Total Recall: {val_recall:.4f}"
-                )
-
-                for class_id, metrics in class_metrics.items():
-                    self.logger.info(
-                        f"Class {class_id}: "
-                        f"Precision: {metrics['precision']:.4f}, "
-                        f"Recall: {metrics['recall']:.4f}, "
-                        f"F1: {metrics['f1']:.4f}"
-                    )
-
-            # Broadcast early stopping decision from main process
-            if self.world_size > 1:
-                early_stop_tensor = torch.tensor([no_improve >= self.earlystoping_patience and self.config["early_stopping"]["enabled"]], dtype=torch.bool, device=self.device)
-                dist.broadcast(early_stop_tensor, src=0)
-                should_early_stop = early_stop_tensor.item()
-            else:
-                should_early_stop = no_improve >= self.earlystoping_patience and self.config["early_stopping"]["enabled"]
-
-            if should_early_stop:
-                if self.is_main_process:
-                    self.logger.info(f"Early stopping at epoch {epoch+1}")
+            should_stop = torch.tensor([no_improve >= self.earlystoping_patience and self.config["early_stopping"]["enabled"]], dtype=torch.bool, device=self.device)
+            dist.broadcast(should_stop, src=0)
+            if should_stop.item():
                 break
-            
-            # Synchronize all processes before next epoch
-            if self.world_size > 1:
-                dist.barrier()
