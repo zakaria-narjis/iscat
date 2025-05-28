@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from src.knn_loss import knn_divergence
+from src.losses import knn_divergence
 import logging
 import os
 from tqdm import tqdm
