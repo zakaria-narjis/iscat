@@ -1,7 +1,7 @@
 seed: 0
 data:
   image_size: 256
-  z_chunk_size : 32  # Number of chunks to divide the z-stack into for averaging
+  z_chunk_size : 12  # Number of chunks to divide the z-stack into for averaging
   fluo_masks_indices: [0,1] # classes used for training
   seg_method: "comdet"
   data_type: "Brightfield" # Brightfield/Laser

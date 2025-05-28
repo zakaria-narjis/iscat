@@ -115,3 +115,135 @@ class iScatDataset(Dataset):
                 mask = TF.rotate(mask, angle)
         # Ensure the returned tensors have the right shapes
         return image, mask
+
+class iScatDataset2(Dataset):
+    def __init__(
+        self,
+        hdf5_path,
+        classes=[0, 1, 2],
+        apply_augmentation=False,
+        normalize="minmax",
+        indices=None,
+        multi_class=False,
+        chunk_size=32,
+    ):
+        """
+        PyTorch Dataset for microscopy data stored in an HDF5 file.
+
+        Args:
+            hdf5_path (str): Path to the HDF5 file.
+            classes (list): Classes to include in the mask.
+            apply_augmentation (bool): Whether to apply random flips.
+            normalize (str): Normalization method, either 'minmax' or 'zscore'.
+            indices (list): Optional list of indices to subset the dataset.
+            chunk_size (int): Number of frames to average for each image.
+        """
+        self.hdf5_path = hdf5_path
+        self.classes = classes
+        self.apply_augmentation = apply_augmentation
+        self.normalize = normalize
+        self.multi_class = multi_class
+        self.chunk_size = chunk_size
+        # Open HDF5 file and get dataset sizes
+        with h5py.File(hdf5_path, "r") as f:
+            self.image_dataset_size = f["image_patches"].shape[0]
+
+        # If indices are provided, filter dataset length
+        self.indices = (
+            indices if indices is not None else range(self.image_dataset_size)
+        )
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        # Map the input index to the subset index
+        idx = self.indices[idx]
+
+        # Load the data from HDF5
+        with h5py.File(self.hdf5_path, "r") as f:
+            image = f["image_patches"][idx].copy()  # Shape: (Z, H, W)
+            masks = f["mask_patches"][idx].copy()  # Shape: (C, H, W)
+        # Extract averaged frame over x frames
+        image_x = torch.from_numpy(
+            image.astype(np.float32)
+        ).mean(dim=1)
+        image_y = torch.from_numpy(
+            image.astype(np.float32)
+        ).mean(dim=2)
+        # Extract averaged frames
+        # image = Utils.extract_averaged_frames(image, num_frames=self.chunk_size)
+        image_z = Utils.extract_averaged_frames(
+            image, num_frames=self.chunk_size-2
+        )
+        image_z = torch.from_numpy( 
+            image_z.astype(np.float32)
+        )
+        # image_z = torch.from_numpy(
+        #     image.astype(np.float32)
+        # ).mean(dim=0)  # Average over the Z dimension
+        # Convert to float32
+        image = torch.from_numpy(
+            image.astype(np.float32)
+        )  # Convert image to tensor
+        masks = torch.from_numpy(
+            masks.astype(np.uint8)
+        )  # Convert masks to tensor
+
+        # Normalize the image
+        if self.normalize == "minmax":
+            
+            image = (image - image.min()) / (image.max() - image.min() + 1e-8)         
+        elif self.normalize == "zscore":
+            mean = image.mean()
+            std = image.std() + 1e-8
+            image_x = (image_x - mean) / std
+            image_y = (image_y - mean) / std
+            image_z = (image_z - mean) / std
+        elif self.normalize is None:
+            pass
+        else:
+            raise ValueError(
+                "Invalid normalization method. Choose 'minmax' or 'zscore'."
+            )
+
+        # Process masks based on selected classes
+        if len(self.classes) == 1:
+            # Single-class mask
+            mask = masks[self.classes[0]]
+        else:
+            # Multi-class mask
+            if self.multi_class:
+                mask = torch.zeros_like(masks[0], dtype=torch.uint8)
+                for i, cls in enumerate(self.classes, start=1):
+                    mask[masks[cls] > 0] = i  # Assign class indices
+            else:
+                # Binary mask
+                mask = torch.zeros_like(masks[0], dtype=torch.uint8)
+                for cls in self.classes:
+                    mask += masks[cls]
+                mask[mask > 1] = 1  # Ensure binary mask
+        # Upsample the axial and lateral averaged images
+        image_x = TF.resize(image_x.unsqueeze(0), size=image.shape[1:], interpolation=TF.InterpolationMode.BICUBIC)
+        image_y = TF.resize(image_y.unsqueeze(0), size=image.shape[1:], interpolation=TF.InterpolationMode.BICUBIC)
+        # Concatenate the averaged images along the channel dimension
+        image = torch.cat((image_z,image_x, image_y), dim=0)
+        # Apply augmentation using torchvision.transforms.functional
+        if self.apply_augmentation:
+            # Random horizontal flipping
+            if random.random() > 0.5:
+                image = TF.hflip(image)
+                mask = TF.hflip(mask)
+
+            # Random vertical flipping
+            if random.random() > 0.5:
+                image = TF.vflip(image)
+                mask = TF.vflip(mask)
+
+            # Random rotation of 90° or -90°
+            if random.random() > 0.5:
+                angle = random.choice([90, -90])
+                image = TF.rotate(image, angle)
+                mask = TF.rotate(mask, angle)
+        # Ensure the returned tensors have the right shapes
+        return image, mask

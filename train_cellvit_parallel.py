@@ -3,7 +3,7 @@ import argparse
 import yaml
 import torch
 from torch.utils.data import DataLoader
-from src.data_processing.dataset import iScatDataset
+from src.data_processing.dataset import iScatDataset,iScatDataset2
 from src.trainers.cellvit_trainer import Trainer
 from src.data_processing.utils import Utils
 import re
@@ -267,7 +267,7 @@ def ddp_main(rank, world_size, args, config):
     )
     
     # Create datasets
-    train_dataset = iScatDataset(
+    train_dataset = iScatDataset2(
         hdf5_path=hdf5_path,
         indices=train_indices,
         classes=config["data"]["train_dataset"]["classes"],
@@ -277,7 +277,7 @@ def ddp_main(rank, world_size, args, config):
         chunk_size=config["data"]["z_chunk_size"],
     )
 
-    valid_dataset = iScatDataset(
+    valid_dataset = iScatDataset2(
         hdf5_path=hdf5_path,
         indices=valid_indices,
         classes=config["data"]["valid_dataset"]["classes"],
@@ -287,7 +287,7 @@ def ddp_main(rank, world_size, args, config):
         chunk_size=config["data"]["z_chunk_size"],
     )
     
-    test_dataset = iScatDataset(
+    test_dataset = iScatDataset2(
         hdf5_path=hdf5_path,
         indices=test_indices,
         classes=config["data"]["train_dataset"]["classes"],
