@@ -54,7 +54,7 @@ def distance_matrix(a, b):
     return torch.abs(a_expanded - b_expanded)
 
 
-def knn_divergence(
+def knnDivergence(
     points_x: torch.Tensor,
     points_y: torch.Tensor,
     k_neighbors: torch.Tensor,
@@ -118,3 +118,41 @@ def knn_divergence(
         raise ValueError(
             "Invalid reduction method. Choose either 'mean', 'sum', or 'none'."
         )
+
+  
+def compute_contrast(imgs: torch.Tensor, dim=(1, 2, 3)):
+    return imgs.amax(dim=dim) - imgs.amin(dim=dim)
+
+def MonotonicityLoss(predictions: torch.Tensor, images: torch.Tensor, direction: str = "increasing"):
+    """
+    Enforces that predictions follow the same monotonic order as contrast.
+    
+    Args:
+        predictions (torch.Tensor): Predicted values of shape (B,)
+        images (torch.Tensor): Batch of images of shape (B, C, H, W)
+        direction (str): 'increasing' or 'decreasing' monotonicity
+        
+    Returns:
+        torch.Tensor: Scalar monotonicity loss
+    """
+    if direction not in {"increasing", "decreasing"}:
+        raise ValueError("direction must be 'increasing' or 'decreasing'")
+
+    contrast_values = compute_contrast(images)  # Shape: (B,)
+    predictions = predictions.view(-1)          # Ensure shape (B,)
+
+    contrast_diff = contrast_values.unsqueeze(0) - contrast_values.unsqueeze(1)  # (B, B)
+    pred_diff = predictions.unsqueeze(0) - predictions.unsqueeze(1)              # (B, B)
+
+    if direction == "increasing":
+        # Enforce: if contrast_i < contrast_j, then pred_i < pred_j
+        contrast_pairs = contrast_diff < 0
+        violations = torch.relu(-pred_diff) * contrast_pairs  # Penalize pred_i >= pred_j
+    else:  # "decreasing"
+        # Enforce: if contrast_i < contrast_j, then pred_i > pred_j
+        contrast_pairs = contrast_diff < 0
+        violations = torch.relu(pred_diff) * contrast_pairs   # Penalize pred_i <= pred_j
+    # violations = violations**2  # Square the violations for loss calculation
+    num_pairs = contrast_pairs.sum()
+    loss = violations.sum() / (num_pairs + 1e-8)
+    return loss

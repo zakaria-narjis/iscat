@@ -181,6 +181,99 @@ def write_config_to_tensorboard(writer, config):
 
         writer.add_text(f"Configuration/{section}", "\n".join(table_rows))
 
+def plot_prediction_monotonicity(
+    model, dataset_path, classes, mean, std, device, experiment_dir, num_samples=1000
+):
+    """
+    Plot prediction vs contrast to analyze monotonicity.
+    
+    Args:
+        model: Trained model
+        dataset_path: Path to the HDF5 dataset
+        classes: List of classes to include
+        mean: Normalization mean
+        std: Normalization std
+        device: Device to run inference on
+        experiment_dir: Directory to save the plot
+        num_samples: Number of samples to use for the plot (default: 1000)
+    """
+    # Create a dataset for plotting
+    plot_dataset = ParticleDataset(
+        h5_path=dataset_path,
+        classes=classes,
+        mean=mean,
+        std=std,
+        padding=False,
+        transform=None,
+        indices=None,
+    )
+    
+    # Limit to num_samples if dataset is larger
+    total_samples = len(plot_dataset)
+    if total_samples > num_samples:
+        # Randomly sample indices
+        sample_indices = torch.randperm(total_samples)[:num_samples]
+        plot_dataset = ParticleDataset(
+            h5_path=dataset_path,
+            classes=classes,
+            mean=mean,
+            std=std,
+            padding=False,
+            transform=None,
+            indices=sample_indices.tolist(),
+        )
+    
+    # Create dataloader
+    plot_dataloader = DataLoader(
+        plot_dataset, batch_size=len(plot_dataset), shuffle=False
+    )
+    
+    # Get predictions and calculate contrast
+    with torch.no_grad():
+        data = next(iter(plot_dataloader))
+        images = data[0]  # Shape: (batch_size, channels, height, width)
+        predictions = model(images.to(device)).cpu().numpy().flatten()
+        
+        # Calculate contrast for each image
+        contrasts = (images.amax(dim=(1,2, 3)) - images.amin(dim=(1,2, 3))).numpy()
+    
+    # Create the plot
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    
+    # Scatter plot
+    ax.scatter(contrasts, predictions, alpha=0.6, s=10, color='blue')
+    
+    # Add trend line (polynomial fit)
+    z = np.polyfit(contrasts, predictions, 1)  # Linear fit
+    p = np.poly1d(z)
+    x_trend = np.linspace(contrasts.min(), contrasts.max(), 100)
+    ax.plot(x_trend, p(x_trend), "r--", alpha=0.8, linewidth=2, label=f'Linear fit (slope: {z[0]:.3f})')
+    
+    # Calculate correlation coefficient
+    correlation = np.corrcoef(contrasts, predictions)[0, 1]
+    
+    ax.set_xlabel('Contrast')
+    ax.set_ylabel('Predicted Size [nm]')
+    ax.set_title(f'Prediction vs Contrast Monotonicity\n(Correlation: {correlation:.3f}, N={len(contrasts)})')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Add correlation coefficient as text
+    ax.text(0.05, 0.95, f'Pearson r = {correlation:.3f}', 
+            transform=ax.transAxes, bbox=dict(boxstyle="round", facecolor='wheat', alpha=0.8),
+            verticalalignment='top')
+    
+    plt.tight_layout()
+    
+    # Save the figure
+    plt.savefig(
+        os.path.join(experiment_dir, "prediction_monotonicity.png"),
+        format="png",
+        dpi=300,
+    )
+    plt.close(fig)
+    
+    print(f"Monotonicity plot saved. Correlation: {correlation:.3f}")
 
 def plot_loss_and_distribution(
     model,
@@ -471,7 +564,16 @@ def main(args):
         device=device,
         experiment_dir=experiment_dir,
     )
-
+    plot_prediction_monotonicity(
+        model=model,
+        dataset_path=config["data"]["dataset_path"],
+        classes=config["data"]["classes"],
+        mean=config["data"]["mean"],
+        std=config["data"]["std"],
+        device=device,
+        experiment_dir=experiment_dir,
+        num_samples=500  
+    )
     print(f"Training completed. Model and plots saved to {experiment_dir}")
 
 

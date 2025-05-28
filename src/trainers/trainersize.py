@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from src.losses import knn_divergence
+from torch.utils.tensorboard.writer import SummaryWriter
+from src.losses import knnDivergence, MonotonicityLoss
 import logging
 import os
 from tqdm import tqdm
@@ -96,6 +96,8 @@ class TrainerSize(nn.Module):
         Returns:
             None
         """
+        total_knn_loss = 0
+        total_monotonicity_loss = 0
         total_loss = 0
         for batch_images, _ in train_dataloader:
             target_distribution = torch.clone(label_points)
@@ -106,22 +108,31 @@ class TrainerSize(nn.Module):
             # Forward pass: generate predictions
             batch_predictions = self.model(batch_images)
             # Compute KNN divergence loss
-            loss = knn_divergence(
+            knn_loss = knnDivergence(
                 batch_predictions,
                 target_distribution,
                 k_neighbors=k_neighbors,
                 method="absolute",
             )
-
+            # Compute monotonicity loss
+            monotonicity_loss = MonotonicityLoss(
+                batch_predictions, batch_images, direction="decreasing"
+            )
+            # Combine losses
+            loss = knn_loss + monotonicity_loss
             # Backward pass and optimize
             loss.backward()
             self.optimizer.step()
 
             total_loss += loss.item()
+            total_knn_loss += knn_loss.item()
+            total_monotonicity_loss += monotonicity_loss.item()
 
         # Calculate average loss for the epoch
         avg_loss = total_loss / len(train_dataloader)
-        return avg_loss
+        avg_knn_loss = total_knn_loss / len(train_dataloader)
+        avg_monotonicity_loss = total_monotonicity_loss / len(train_dataloader)
+        return avg_loss, avg_knn_loss, avg_monotonicity_loss
 
     def train(self, train_dataloader: DataLoader, num_epochs: int):
         """
@@ -156,7 +167,7 @@ class TrainerSize(nn.Module):
                     max_value=self.config["target_distribution"]["max_value"],
                 ).to(self.device, non_blocking=True)
             self.model.train()
-            avg_loss = self.train_epoch(
+            avg_loss, avg_knn_loss, avg_monotonicity_loss  = self.train_epoch(
                 train_dataloader, label_points, k_neighbors
             )
             loss_log.append(avg_loss)
@@ -167,6 +178,9 @@ class TrainerSize(nn.Module):
             # Log the loss
             self.logger.info(
                 f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}, LR: {current_lr:.2e}"
+            )
+            self.logger.info(
+                f"Epoch [{epoch+1}/{num_epochs}], KNN Loss: {avg_knn_loss:.4f}, Monotonicity Loss: {avg_monotonicity_loss:.4f}"
             )
             if self.writer:
                 self.writer.add_scalar("Loss/train", avg_loss, epoch)
