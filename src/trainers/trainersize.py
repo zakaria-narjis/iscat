@@ -43,7 +43,6 @@ def generate_label_distribution(
     # Return only the first `num_points` points
     return points[:num_points]
 
-
 class TrainerSize(nn.Module):
     def __init__(
         self,
@@ -116,10 +115,10 @@ class TrainerSize(nn.Module):
             )
             # Compute monotonicity loss
             monotonicity_loss = MonotonicityLoss(
-                batch_predictions, batch_images, direction="decreasing"
+                batch_predictions, batch_images, increasing=True
             )
             # Combine losses
-            loss = knn_loss + monotonicity_loss
+            loss = 0.1*knn_loss + 0.9*monotonicity_loss
             # Backward pass and optimize
             loss.backward()
             self.optimizer.step()

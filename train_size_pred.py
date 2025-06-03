@@ -19,6 +19,24 @@ import matplotlib
 
 matplotlib.set_loglevel("WARNING")
 
+def contrast_from_middle_rows(images: torch.Tensor) -> torch.Tensor:
+    """
+    Compute standard deviation (RMS contrast) from the 4 middle rows of each image in a batch.
+    
+    Args:
+        images: Tensor of shape (B, C, H, W)
+    
+    Returns:
+        Tensor of shape (B,) with contrast values.
+    """
+    B, C, H, W = images.shape
+    mid = H // 2
+    rows = images[:, :, mid - 2:mid + 2, :]  # (B, C, 4, W)
+
+    gray = rows.mean(dim=1)  # Convert to grayscale: (B, 4, W)
+    contrast = gray.std(dim=(1, 2))  # Compute std over height and width
+
+    return contrast  # shape: (B,)
 
 def save_metrics_to_json(metrics_dict, output_folder):
     """
@@ -235,7 +253,7 @@ def plot_prediction_monotonicity(
         predictions = model(images.to(device)).cpu().numpy().flatten()
         
         # Calculate contrast for each image
-        contrasts = (images.amax(dim=(1,2, 3)) - images.amin(dim=(1,2, 3))).numpy()
+        contrasts = contrast_from_middle_rows(images)
     
     # Create the plot
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
@@ -251,7 +269,7 @@ def plot_prediction_monotonicity(
     
     # Calculate correlation coefficient
     correlation = np.corrcoef(contrasts, predictions)[0, 1]
-    
+   
     ax.set_xlabel('Contrast')
     ax.set_ylabel('Predicted Size [nm]')
     ax.set_title(f'Prediction vs Contrast Monotonicity\n(Correlation: {correlation:.3f}, N={len(contrasts)})')
@@ -319,7 +337,7 @@ def plot_loss_and_distribution(
         num_points=distribution_config["num_points"],
         mean=distribution_config["mean"],
         std=distribution_config["std"],
-        min_value=10,
+        min_value=None,
         max_value=None,
     )
     # Get predictions

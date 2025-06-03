@@ -123,7 +123,26 @@ def knnDivergence(
 def compute_contrast(imgs: torch.Tensor, dim=(1, 2, 3)):
     return imgs.amax(dim=dim) - imgs.amin(dim=dim)
 
-def MonotonicityLoss(predictions: torch.Tensor, images: torch.Tensor, direction: str = "increasing"):
+def contrast_from_middle_rows(images: torch.Tensor) -> torch.Tensor:
+    """
+    Compute standard deviation (RMS contrast) from the 4 middle rows of each image in a batch.
+    
+    Args:
+        images: Tensor of shape (B, C, H, W)
+    
+    Returns:
+        Tensor of shape (B,) with contrast values.
+    """
+    B, C, H, W = images.shape
+    mid = H // 2
+    rows = images[:, :, mid - 2:mid + 2, :]  # (B, C, 4, W)
+
+    gray = rows[:,0,:,:]  # Convert to grayscale: (B, 4, W)
+    contrast = gray.std(dim=(1, 2))  # Compute std over height and width
+
+    return contrast  # shape: (B,)
+
+def MonotonicityLoss(predictions: torch.Tensor, images: torch.Tensor, increasing: bool = True):
     """
     Enforces that predictions follow the same monotonic order as contrast.
     
@@ -135,23 +154,22 @@ def MonotonicityLoss(predictions: torch.Tensor, images: torch.Tensor, direction:
     Returns:
         torch.Tensor: Scalar monotonicity loss
     """
-    if direction not in {"increasing", "decreasing"}:
-        raise ValueError("direction must be 'increasing' or 'decreasing'")
 
-    contrast_values = compute_contrast(images)  # Shape: (B,)
+    # contrast_values = compute_contrast(images)  # Shape: (B,)
+    contrast_values = contrast_from_middle_rows(images)  # Shape: (B,)
     predictions = predictions.view(-1)          # Ensure shape (B,)
 
     contrast_diff = contrast_values.unsqueeze(0) - contrast_values.unsqueeze(1)  # (B, B)
     pred_diff = predictions.unsqueeze(0) - predictions.unsqueeze(1)              # (B, B)
 
-    if direction == "increasing":
+    if increasing:
         # Enforce: if contrast_i < contrast_j, then pred_i < pred_j
         contrast_pairs = contrast_diff < 0
-        violations = torch.relu(-pred_diff) * contrast_pairs  # Penalize pred_i >= pred_j
+        violations = torch.relu(pred_diff) * contrast_pairs  # Penalize pred_i >= pred_j
     else:  # "decreasing"
         # Enforce: if contrast_i < contrast_j, then pred_i > pred_j
         contrast_pairs = contrast_diff < 0
-        violations = torch.relu(pred_diff) * contrast_pairs   # Penalize pred_i <= pred_j
+        violations = torch.relu(-pred_diff) * contrast_pairs   # Penalize pred_i <= pred_j
     # violations = violations**2  # Square the violations for loss calculation
     num_pairs = contrast_pairs.sum()
     loss = violations.sum() / (num_pairs + 1e-8)
