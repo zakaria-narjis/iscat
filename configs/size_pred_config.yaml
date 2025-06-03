@@ -27,9 +27,9 @@ training:
   # Parameters for the target size distribution
   target_distribution:
     num_points: 30000  # Number of points in the target distribution
-    mean: 76.0        # Mean of the target normal distribution (in nm)
-    std: 22.5         # Standard deviation of the distribution (in nm)
-    min_value: 10.0   # Minimum size value (in nm)
+    mean: 76        # Mean of the target normal distribution (in nm) # for 300nm: 302, for 80nm: 76 
+    std: 22.5         # Standard deviation of the distribution (in nm) # for 300nm: 25, for 80nm: 22.5
+    min_value: 50.0   # Minimum size value (in nm)
     max_value: null   # Maximum size value (in nm), null means no maximum
     k: 3000           # k parameter for KNN divergence loss
     cycle: 5          # Regenerate distribution every N epochs
