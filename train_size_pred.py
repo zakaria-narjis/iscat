@@ -590,7 +590,7 @@ def main(args):
         std=config["data"]["std"],
         device=device,
         experiment_dir=experiment_dir,
-        num_samples=500  
+        num_samples=1000  
     )
     print(f"Training completed. Model and plots saved to {experiment_dir}")
 
