@@ -1,0 +1,37 @@
+data:
+  classes:
+  - 1
+  dataset_path: /data_ssd2/iscat_data/brightfield_particles_y.hdf5
+  mean: null
+  num_workers: 10
+  padding: false
+  std: null
+logging:
+  tensorboard:
+    log_dir: experiments/runs/size_prediction
+seed: 0
+training:
+  batch_size: 4000
+  device: cuda:4
+  early_stopping:
+    enabled: true
+    patience: 20
+  num_epochs: 600
+  optimizer:
+    parameters:
+      lr: 0.01
+    type: Adam
+  scheduler:
+    parameters:
+      factor: 0.5
+      mode: min
+      patience: 8
+    type: ReduceLROnPlateau
+  target_distribution:
+    cycle: 5
+    k: 800
+    max_value: null
+    mean: 302
+    min_value: 150.0
+    num_points: 8000
+    std: 25

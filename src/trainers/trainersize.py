@@ -143,7 +143,8 @@ class TrainerSize(nn.Module):
         logging.basicConfig(
             level=log_level, format="%(asctime)s - %(levelname)s - %(message)s"
         )
-
+        self.weight_monotonicity = self.config["losses"]["monotonicity"]["weight"]
+        self.weight_knn_divergence = self.config["losses"]["knn_divergence"]["weight"]
     def train_epoch(
         self,
         train_dataloader: DataLoader,
@@ -184,7 +185,7 @@ class TrainerSize(nn.Module):
                 batch_predictions, batch_images, increasing=True
             )
             # Combine losses
-            loss = 0.1*knn_loss + 0.9*monotonicity_loss
+            loss = self.weight_knn_divergence*knn_loss + self.weight_monotonicity*monotonicity_loss
             # Backward pass and optimize
             loss.backward()
             self.optimizer.step()
