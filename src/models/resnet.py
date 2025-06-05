@@ -11,7 +11,7 @@ class ResNet18(nn.Module):
         self.resnet.fc = nn.Sequential(
             nn.Linear(self.resnet.fc.in_features, self.resnet.fc.in_features),
             nn.ReLU(),
-            nn.Linear(self.resnet.fc.in_features, 2)
+            nn.Linear(self.resnet.fc.in_features, num_classes)
         )
         self.resnet.conv1 = nn.Conv2d(
             1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
