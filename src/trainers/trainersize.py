@@ -143,8 +143,8 @@ class TrainerSize(nn.Module):
         logging.basicConfig(
             level=log_level, format="%(asctime)s - %(levelname)s - %(message)s"
         )
-        self.weight_monotonicity = self.config["losses"]["monotonicity"]["weight"]
-        self.weight_knn_divergence = self.config["losses"]["knn_divergence"]["weight"]
+        self.weight_monotonicity = self.config["loss"]["monotonicity"]["weight"]
+        self.weight_knn_divergence = self.config["loss"]["knn_divergence"]["weight"]
     def train_epoch(
         self,
         train_dataloader: DataLoader,
