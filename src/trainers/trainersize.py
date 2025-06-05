@@ -69,11 +69,42 @@ def generate_label_distribution(
     Returns:
         torch.Tensor: Tensor of generated points within the specified range
     """
-    points = torch.zeros(num_points)  # Initialize a tensor to store valid points
-    return _no_grad_trunc_normal_(
-        points, mean=mean, std=std, a=min_value if min_value is not None else -float('inf'),
-        b=max_value if max_value is not None else float('inf')
+    points_80 = torch.zeros(num_points)  # Initialize a tensor to store valid points
+    points_300 = torch.zeros(num_points//2)  # Initialize a tensor to store valid points
+    dist_80 = _no_grad_trunc_normal_(
+        points_80, mean=76, std=22.5, a = 10 ,
+        b= 170
     )
+    dist_300 = _no_grad_trunc_normal_(
+        points_300, mean=302, std=25, a=170 ,
+        b=400 
+    )
+    output = torch.cat((dist_80, dist_300), dim=0)
+    return output
+
+# def generate_label_distribution(
+#     num_points=10000, mean=76, std=22.5, min_value=10, max_value=None
+# ):
+#     """
+#     Generate a tensor of points sampled from a normal distribution with specified mean and standard deviation
+#     while rejecting points outside the optional min and max value constraints.
+
+#     Args:
+#         num_points (int): Number of points to generate
+#         mean (float): Mean of the distribution
+#         std (float): Standard deviation of the distribution
+#         min_value (float, optional): Minimum value of the distribution (inclusive)
+#         max_value (float, optional): Maximum value of the distribution (inclusive)
+
+#     Returns:
+#         torch.Tensor: Tensor of generated points within the specified range
+#     """
+#     points = torch.zeros(num_points)  # Initialize a tensor to store valid points
+#     dist = _no_grad_trunc_normal_(
+#         points, mean=mean, std=std, a=min_value if min_value is not None else -float('inf'),
+#         b=max_value if max_value is not None else float('inf')
+#     )
+#     return dist
 
 # def generate_label_distribution(
 #     num_points=10000, mean=76, std=22.5, min_value=10, max_value=None
@@ -165,7 +196,7 @@ class TrainerSize(nn.Module):
         total_knn_loss = 0
         total_monotonicity_loss = 0
         total_loss = 0
-        for batch_images, _ in train_dataloader:
+        for batch_images, particles_cls in train_dataloader:
             target_distribution = torch.clone(label_points)
             batch_images = batch_images.to(self.device)
 
@@ -174,12 +205,22 @@ class TrainerSize(nn.Module):
             # Forward pass: generate predictions
             batch_predictions = self.model(batch_images)
             # Compute KNN divergence loss
-            knn_loss = knnDivergence(
-                batch_predictions,
-                target_distribution,
-                k_neighbors=k_neighbors,
+            knn_loss_80 = knnDivergence(
+                batch_predictions[particles_cls==0],
+                target_distribution[:30000],
+                k_neighbors=torch.arange(
+            2, len(batch_predictions[particles_cls==0])//2, dtype=torch.int
+        ),
                 method="absolute",
             )
+            knn_loss_300 = knnDivergence(
+                batch_predictions[particles_cls==1],
+                target_distribution[30000:],
+                k_neighbors=torch.arange(
+            2, len(batch_predictions[particles_cls==1])//2, dtype=torch.int),
+                method="absolute",
+            )
+            knn_loss= knn_loss_80 + knn_loss_300
             # Compute monotonicity loss
             monotonicity_loss = MonotonicityLoss(
                 batch_predictions, batch_images, increasing=True
@@ -231,7 +272,7 @@ class TrainerSize(nn.Module):
                     std=self.config["target_distribution"]["std"],
                     min_value=self.config["target_distribution"]["min_value"],
                     max_value=self.config["target_distribution"]["max_value"],
-                ).to(self.device, non_blocking=True)
+                ).to(self.device)
             self.model.train()
             avg_loss, avg_knn_loss, avg_monotonicity_loss  = self.train_epoch(
                 train_dataloader, label_points, k_neighbors
