@@ -25,9 +25,9 @@ training:
     patience: 20
   loss:
     knn_divergence:
-      weight: 0.1     # Weight for KNN divergence loss
+      weight: 0.2     # Weight for KNN divergence loss
     monotonicity:
-      weight: 0.9     # Weight for monotonicity loss
+      weight: 0.8     # Weight for monotonicity loss
   # Parameters for the target size distribution
   target_distribution:
     num_points: 30000  # Number of points in the target distribution
