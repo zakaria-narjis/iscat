@@ -7,7 +7,7 @@ data:
   dataset_path: "/data_ssd2/iscat_data/brightfield_particles_y.hdf5"
   num_workers: 10
 training:
-  batch_size: 8000
+  batch_size: 10000
   num_epochs: 600
   device: "cuda:4"
   optimizer:
@@ -25,9 +25,9 @@ training:
     patience: 20
   loss:
     knn_divergence:
-      weight: 0.2     # Weight for KNN divergence loss
+      weight: 0.8     # Weight for KNN divergence loss
     monotonicity:
-      weight: 0.8     # Weight for monotonicity loss
+      weight: 0.2     # Weight for monotonicity loss
   # Parameters for the target size distribution
   target_distribution:
     num_points: 30000  # Number of points in the target distribution
