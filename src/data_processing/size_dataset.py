@@ -93,17 +93,17 @@ class ParticleDataset(Dataset):
         )  # Add channel dim
 
         # Resize to (16, 16) using bicubic interpolation
-        resized = (
-            torch.nn.functional.interpolate(
-                particle_tensor.unsqueeze(0),  # Add batch dim
-                size=(16, 128),
-                mode="bicubic",
-                align_corners=True,
-            )
-            .squeeze(0)
-            .squeeze(0)
-        )  # Remove batch and channel dims
-        # resized = particle_tensor.squeeze(0)
+        # resized = (
+        #     torch.nn.functional.interpolate(
+        #         particle_tensor.unsqueeze(0),  # Add batch dim
+        #         size=(16, 128),
+        #         mode="bicubic",
+        #         align_corners=True,
+        #     )
+        #     .squeeze(0)
+        #     .squeeze(0)
+        # Remove batch and channel dims
+        resized = particle_tensor.squeeze(0)
         # final_tensor = resized.unsqueeze(0).repeat(
         #     3, 1, 1
         # )  # Repeat across 3 channels
