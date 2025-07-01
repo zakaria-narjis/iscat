@@ -6,7 +6,7 @@ from nd2 import ND2File
 from pathlib import Path
 import sys 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.data_processing.utils.Utils import subtract_median_background_chunked
+from src.data_processing.utils import Utils
 import argparse
 
 
@@ -103,7 +103,7 @@ def process_3d_particles(
             with ND2File(nd2_path) as nd2:
                 image = nd2.asarray()  # (Z, H, W)
                 print("Applying median filter")
-                image = subtract_median_background_chunked(
+                image = Utils.subtract_median_background_chunked(
                     image,
                     kernel_size=kernel_size,
                     chunk_size=chunk_size,
