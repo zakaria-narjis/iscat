@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from nd2 import ND2File
 from pathlib import Path
+import sys 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.data_processing.utils import subtract_median_background_chunked
 import argparse
 

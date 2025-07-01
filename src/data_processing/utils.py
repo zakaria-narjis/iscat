@@ -9,7 +9,7 @@ import torch
 from typing import Union, List, Tuple
 import torch.nn.functional as F
 import h5py
-from MedianFilter import MemoryEfficientMedianPool2d, SeparableMedianFilter, cpu_median_filter
+from src.data_processing.MedianFilter import MemoryEfficientMedianPool2d, SeparableMedianFilter, cpu_median_filter
 
 class Utils:
 
