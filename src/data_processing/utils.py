@@ -9,7 +9,7 @@ import torch
 from typing import Union, List, Tuple
 import torch.nn.functional as F
 import h5py
-
+from MedianFilter import MemoryEfficientMedianPool2d, SeparableMedianFilter, cpu_median_filter
 
 class Utils:
 
@@ -383,3 +383,67 @@ class Utils:
             averaged_frames.append(np.mean(chunk, axis=0))
 
         return np.array(averaged_frames)
+
+
+    def subtract_median_background_chunked(image_stack, kernel_size=31, device="cpu", 
+                                    chunk_size=16, method='chunked'):
+        """
+        Memory-efficient background subtraction with multiple optimization strategies.
+        
+        Args:
+            image_stack: Input image stack
+            kernel_size: Size of median filter kernel
+            use_gpu: Whether to use GPU
+            chunk_size: Number of images to process at once
+            method: 'chunked', 'separable', or 'cpu_fallback'
+        """
+        if image_stack.ndim == 3:
+            image_stack = image_stack[None, ...]
+            squeeze_back = True
+        else:
+            squeeze_back = False
+        
+        B, Z, H, W = image_stack.shape
+        device = torch.device(device)
+        
+        results = []
+        
+        for b in range(B):
+            batch_results = []
+            
+            # Process each batch in chunks of Z dimension
+            for z_start in range(0, Z, chunk_size):
+                z_end = min(z_start + chunk_size, Z)
+                chunk = image_stack[b, z_start:z_end]
+                
+                tensor = torch.from_numpy(chunk).float().to(device)
+                tensor = tensor.unsqueeze(1)  # Add channel dimension
+                
+                if method == 'separable':
+                    # Much faster approximation
+                    median_filter = SeparableMedianFilter(kernel_size=kernel_size).to(device)
+                    background = median_filter(tensor)
+                elif method == 'chunked':
+                    # Memory-efficient true median
+                    median_filter = MemoryEfficientMedianPool2d(
+                        kernel_size=kernel_size, stride=1, same=True, 
+                        chunk_size=min(chunk_size, 8)
+                    ).to(device)
+                    background = median_filter(tensor)
+                elif method == 'cpu_fallback':
+                    # Process on CPU with scipy
+                    background = cpu_median_filter(tensor.cpu().numpy(), kernel_size)
+                    background = torch.from_numpy(background).to(device)
+                
+                # result_chunk = (tensor - background).squeeze(1)
+                result_chunk = (tensor - background).squeeze(1)
+                batch_results.append(result_chunk.cpu().numpy())
+                
+                # Clear GPU cache
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
+            results.append(np.concatenate(batch_results, axis=0))
+        
+        final_result = np.stack(results, axis=0)
+        return final_result[0] if squeeze_back else final_result
