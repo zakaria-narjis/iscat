@@ -186,43 +186,20 @@ def trunc_normal_(tensor, mean=0.0, std=1.0, a=-2.0, b=2.0):
     ## type: (Tensor, float, float, float, float) -> Tensor
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
-def assign_p_by_contrast(data, cls, p_arrays):
-    """
-    Assign P values to images based on their contrast within each class.
-    
-    Args:
-        data: numpy array of shape (N, 16, 201) - image data
-        cls: numpy array of shape (N,) - class labels
-        p_arrays: list of numpy arrays [P1, P2, ..., Pn] - P values for each class
-        contrast_from_middle_rows: function that computes contrast from images
-    
-    Returns:
-        numpy array of shape (N,) - assigned P values
-    """
-    # Compute contrast for all images
-    contrasts = contrast_from_middle_rows(data)
-    
-    # Initialize result array
-    assigned_p = np.zeros(len(data))
-    
-    # Process each class
-    unique_classes = np.unique(cls)
-    for i, class_id in enumerate(unique_classes):
-        # Get indices for current class
-        class_mask = cls == class_id
-        class_indices = np.where(class_mask)[0]
-        
-        # Get contrasts for current class and sort indices by contrast
-        class_contrasts = contrasts[class_mask]
-        sorted_indices = np.argsort(class_contrasts)
-        
-        # Sort P array for current class
-        p_sorted = np.sort(p_arrays[i])
-        
-        # Assign P values: lowest contrast gets lowest P, highest contrast gets highest P
-        assigned_p[class_indices[sorted_indices]] = p_sorted
-    
-    return assigned_p
+
+def assign_p_by_contrast(data, Cls, sizes):
+    C = contrast_from_middle_rows(data)  # (N,)
+    N = len(Cls)
+    P_assigned = np.empty(N, dtype=np.float32)
+
+    for class_id, P in enumerate(sizes):
+        idx = np.where(Cls == class_id)[0]
+        sorted_idx = idx[np.argsort(C[idx])]
+        sorted_P = np.sort(P)
+        P_assigned[sorted_idx] = sorted_P
+
+    return P_assigned
+
 
 class ParticleDatasetReg(Dataset):
 
@@ -269,12 +246,11 @@ class ParticleDatasetReg(Dataset):
         particles_stats = {self.class_to_idx[k]: v for k, v in particles_stats.items() if k in classes}
         distributions = [
             trunc_normal_(
-                torch.empty(len(self.labels==k)),v[0], v[1], v[2], v[3]
+                torch.empty(len(self.labels[self.labels==k])),v[0], v[1], v[2], v[3]
             ) for k, v in particles_stats.items()
         ]
-
         self.size_labels = assign_p_by_contrast(
-            self.data, self.labels, distributions
+            self.data[:,np.newaxis,...], self.labels, distributions
         )
     def __len__(self):
         return len(self.labels)
@@ -290,7 +266,9 @@ class ParticleDatasetReg(Dataset):
         # Convert to torch tensor for better interpolation
         particle = torch.from_numpy(particle).unsqueeze(
             0
-        ).squeeze(0)
+        ).squeeze(0).repeat(
+            1, 1, 1
+        ).to(torch.float32)
         if self.transform:
             particle = self.transform(particle)
 
