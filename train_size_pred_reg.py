@@ -17,6 +17,7 @@ from torchvision.transforms import v2
 from matplotlib import pyplot as plt
 import matplotlib
 import logging
+from sklearn.model_selection import StratifiedShuffleSplit
 
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
@@ -594,7 +595,23 @@ def main(args):
         ]
     )
     
-    # Create dataset
+    full_dataset = ParticleDatasetReg(
+        h5_path=config["data"]["dataset_path"],
+        classes=config["data"]["classes"],
+        transform=None,
+        mean=config["data"]["mean"],
+        std=config["data"]["std"],
+        padding=config["data"]["padding"],
+    )
+
+    # Extract class labels for stratified split
+    class_labels = [full_dataset[i][1].item() for i in range(len(full_dataset))]
+
+    # Stratified split
+    splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=config["seed"])
+    train_idx, val_idx = next(splitter.split(np.zeros(len(class_labels)), class_labels))
+
+    # Apply transforms only on train split
     train_dataset = ParticleDatasetReg(
         h5_path=config["data"]["dataset_path"],
         classes=config["data"]["classes"],
@@ -602,15 +619,21 @@ def main(args):
         mean=config["data"]["mean"],
         std=config["data"]["std"],
         padding=config["data"]["padding"],
-        indices=None,
+        indices=train_idx.tolist(),
     )
 
-    # Create dataloader
-    train_loader = create_dataloaders(
-        train_dataset,
-        batch_size=config["training"]["batch_size"],
-        num_workers=config["data"]["num_workers"],
+    val_dataset = ParticleDatasetReg(
+        h5_path=config["data"]["dataset_path"],
+        classes=config["data"]["classes"],
+        transform=None,
+        mean=config["data"]["mean"],
+        std=config["data"]["std"],
+        padding=config["data"]["padding"],
+        indices=val_idx.tolist(),
     )
+
+    train_loader = create_dataloaders(train_dataset, config["training"]["batch_size"], config["data"]["num_workers"])
+    val_loader = create_dataloaders(val_dataset, config["training"]["batch_size"], config["data"]["num_workers"])
 
     # Initialize model
     model = ResNet18(num_classes=1)  # For regression, output is a single value
@@ -627,9 +650,8 @@ def main(args):
     )
 
     # Train the model
-    loss_log = trainer.train(
-        train_loader, num_epochs=config["training"]["num_epochs"]
-    )
+    loss_log = trainer.train(train_loader, val_loader, num_epochs=config["training"]["num_epochs"])
+
 
     # Save metrics
     metrics = {

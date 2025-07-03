@@ -15,6 +15,7 @@ training:
     type: "Adam"
     parameters:
       lr: 1e-4 #5e-2
+      weight_decay: 5e-3
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:

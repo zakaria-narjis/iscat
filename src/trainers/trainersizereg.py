@@ -26,10 +26,11 @@ class ParticleSizeTrainer(nn.Module):
         self.experiment_dir = experiment_dir
         self.writer = writer
         self.verbose = verbose
-        
+        self.training_noise_std = config.get("training_noise_std", 3.0)
         # Initialize optimizer
         self.optimizer = optim.Adam(
             model.parameters(), lr=self.config["optimizer"]["parameters"]["lr"]
+            , weight_decay=config["optimizer"]["parameters"].get("weight_decay", 0.0)
         )
         
         # Initialize scheduler
@@ -78,7 +79,9 @@ class ParticleSizeTrainer(nn.Module):
         for batch_data, class_labels, size_labels in train_dataloader:
             batch_data = batch_data.to(self.device)
             size_labels = size_labels.to(self.device).float()
-            
+            if self.training_noise_std > 0:
+                noise = torch.randn_like(size_labels) * self.training_noise_std
+                size_labels = size_labels + noise
             # Zero gradients
             self.optimizer.zero_grad()
             
@@ -120,78 +123,56 @@ class ParticleSizeTrainer(nn.Module):
         
         return avg_mse, per_class_mse
     
-    def train(self, train_dataloader: DataLoader, num_epochs: int):
-        """
-        Train the model for a specified number of epochs.
-        
-        Args:
-            train_dataloader (DataLoader): Training dataloader
-            num_epochs (int): Number of epochs to train
-            
-        Returns:
-            list: Training loss log
-        """
-        # Early stopping parameters
-        best_mse = float("inf")
+    def train(self, train_dataloader, val_dataloader, num_epochs):
+        best_val_mse = float("inf")
         no_improve = 0
         loss_log = []
-        
-        # Training loop
-        for epoch in tqdm(
-            range(num_epochs),
-            disable=not self.logger.isEnabledFor(logging.DEBUG),
-        ):
-            # Train for one epoch
-            total_mse, per_class_mse = self.train_epoch(train_dataloader)
-            loss_log.append(total_mse)
+
+        for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
+            train_mse, per_class_mse = self.train_epoch(train_dataloader)
+            val_mse = self.validate_epoch(val_dataloader)
+            loss_log.append(val_mse)
+            self.scheduler.step(val_mse)
+
+            self.logger.info(f"Epoch [{epoch+1}/{num_epochs}], Train MSE: {train_mse:.4f}, Val MSE: {val_mse:.4f}")
             
-            # Get current learning rate
-            current_lr = self.optimizer.param_groups[0]["lr"]
-            
-            # Learning rate scheduling (using total mse)
-            self.scheduler.step(total_mse)
-            
-            # Log metrics
-            self.logger.info(
-                f"Epoch [{epoch+1}/{num_epochs}], Total MSE: {total_mse:.4f}, LR: {current_lr:.2e}"
-            )
-            
-            # Log per-class mse
-            class_mse_str = ", ".join([f"Class {cls}: {mse:.4f}" for cls, mse in per_class_mse.items()])
-            self.logger.info(f"Per-class MSE - {class_mse_str}")
-            
-            # TensorBoard logging
             if self.writer:
-                self.writer.add_scalar("MSE/Total", total_mse, epoch)
-                for cls, mse in per_class_mse.items():
-                    self.writer.add_scalar(f"MSE/Class_{cls}", mse, epoch)
-                self.writer.add_scalar("Learning_Rate", current_lr, epoch)
-            
-            # Early stopping check (based on total mse)
-            if total_mse < best_mse:
-                best_mse = total_mse
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model_state_dict": self.model.state_dict(),
-                        "optimizer_state_dict": self.optimizer.state_dict(),
-                        "mse": best_mse,
-                    },
-                    self.checkpoint_path,
-                )
+                self.writer.add_scalar("MSE/Train", train_mse, epoch)
+                self.writer.add_scalar("MSE/Validation", val_mse, epoch)
+
+            if val_mse < best_val_mse:
+                best_val_mse = val_mse
+                torch.save({
+                    "epoch": epoch,
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "mse": best_val_mse,
+                }, self.checkpoint_path)
                 no_improve = 0
             else:
                 no_improve += 1
-            
-            # Early stopping
-            if (
-                no_improve >= self.config["early_stopping"]["patience"]
-                and self.config["early_stopping"]["enabled"]
-            ):
+
+            if no_improve >= self.config["early_stopping"]["patience"] and self.config["early_stopping"]["enabled"]:
                 self.logger.info(f"Early stopping at epoch {epoch+1}")
                 break
-        
+
         return loss_log
+
+    
+    def validate_epoch(self, val_dataloader):
+        self.model.eval()
+        total_loss = 0
+        total_samples = 0
+        with torch.no_grad():
+            for batch_data, class_labels, size_labels in val_dataloader:
+                batch_data = batch_data.to(self.device)
+                size_labels = size_labels.to(self.device).float()
+                predictions = self.model(batch_data).squeeze()
+                loss = self.criterion(predictions, size_labels)
+                total_loss += loss.item() * len(size_labels)
+                total_samples += len(size_labels)
+        return total_loss / total_samples
+
     
     def save_checkpoint(self, epoch: int, loss: float, filepath: str = None):
         """
