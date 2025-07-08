@@ -349,13 +349,13 @@ def plot_loss_and_distribution(
 
     # Left subplot: Loss logs with log scale
     min_loss = min(loss_log)
-    axes[0].plot(loss_log, color="blue", label="RMSE")
+    axes[0].plot(loss_log, color="blue", label="MSE")
     axes[0].set_xlabel("Epochs")
     axes[0].axhline(y=min_loss, color="blue", linestyle="dashed")
     axes[0].text(
         0, min_loss, f"{min_loss:.4f}", color="blue", verticalalignment="bottom"
     )
-    axes[0].set_ylabel("RMSE (log-scale)")
+    axes[0].set_ylabel("MSE (log-scale)")
     axes[0].set_yscale("log")  # Apply log scale to y-axis
     axes[0].legend()
     axes[0].grid(True, which="both", linestyle="--", linewidth=0.5)
@@ -391,6 +391,102 @@ def plot_loss_and_distribution(
     )
     plt.close(fig)
 
+def plot_validation_sample_images(
+    model, dataset_path, classes, mean, std, device, experiment_dir, val_indices
+):
+    """
+    Plot a grid of sample images from validation set with their predicted sizes.
+
+    Args:
+        model: Trained model
+        dataset_path: Path to the HDF5 dataset
+        classes: List of classes to include
+        mean: Normalization mean
+        std: Normalization std
+        device: Device to run inference on
+        experiment_dir: Directory to save the plot
+        val_indices: List of validation indices to use for plotting
+    """
+    # Create a dataset for plotting using only validation indices
+    plot_dataset = ParticleDatasetReg(
+        h5_path=dataset_path,
+        classes=classes,
+        mean=mean,
+        std=std,
+        padding=False,
+        transform=None,
+        indices=val_indices,
+    )
+
+    # Create dataloader with a large batch size
+    plot_dataloader = DataLoader(
+        plot_dataset, batch_size=len(plot_dataset), shuffle=False
+    )
+
+    # Get predictions
+    with torch.no_grad():
+        data = next(iter(plot_dataloader))
+        imgs = data[0]  # (batch_size, channels, height, width)
+        ground_truth_sizes = data[2]  # Ground truth sizes
+        sizes = model(imgs.to(device)).cpu().squeeze()
+
+        # Find min, max indices
+        max_size, max_idx = sizes.max(dim=0)
+        min_size, min_idx = sizes.min(dim=0)
+
+        # Compute middle size (median)
+        mid_size = sizes.median()
+        mid_idx = (sizes - mid_size).abs().argmin()
+        mid_idx = torch.tensor([mid_idx], dtype=torch.int64)
+
+        # Create 9 intermediate values between min and max
+        intermediate_sizes, intermediate_indices = [], []
+        for fraction in torch.linspace(0, 1, steps=9):
+            interp_size = min_size + fraction * (max_size - min_size)
+            closest_idx = (sizes - interp_size).abs().argmin()
+            intermediate_sizes.append(sizes[closest_idx])
+            intermediate_indices.append(closest_idx)
+
+        # Convert indices to tensor
+        intermediate_indices = torch.tensor(
+            intermediate_indices, dtype=torch.int64
+        )
+
+        # Get images and resize them
+        resized_images = [
+            torch.nn.functional.interpolate(
+                imgs[idx][0:1].unsqueeze(0),
+                size=(16, 32),
+                mode="bilinear",
+                align_corners=False,
+            ).squeeze(0)[0]
+            for idx in intermediate_indices
+        ]
+
+        # Get corresponding ground truth sizes
+        gt_sizes = [ground_truth_sizes[idx] for idx in intermediate_indices]
+
+    # Create 3x3 subplot
+    fig, axes = plt.subplots(3, 3, figsize=(12, 9))
+
+    # Plot images
+    for ax, img, pred_size, gt_size in zip(axes.flat, resized_images, intermediate_sizes, gt_sizes):
+        ax.imshow(img, cmap="gray")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.title.set_text(f"pred: {pred_size.item():.1f} | gt: {gt_size.item():.1f}")
+
+    # Add a main title to distinguish from training samples
+    fig.suptitle("Validation Sample Images with Size Predictions", fontsize=16, y=0.98)
+
+    # Adjust layout and save
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(experiment_dir, "validation_samples_size_predict.png"),
+        format="png",
+        dpi=300,
+    )
+    plt.close(fig)
 
 def plot_sample_images(
     model, dataset_path, classes, mean, std, device, experiment_dir
@@ -487,10 +583,10 @@ def plot_sample_images(
 
 
 def plot_per_class_performance(
-    model, dataset_path, classes, mean, std, device, experiment_dir
+    model, dataset_path, classes, mean, std, device, experiment_dir, val_indices=None
 ):
     """
-    Plot scatter plots of predictions vs ground truth for each class.
+    Plot scatter plots of predictions vs ground truth for each class on validation dataset.
     
     Args:
         model: Trained model
@@ -500,8 +596,9 @@ def plot_per_class_performance(
         std: Normalization std
         device: Device to run inference on
         experiment_dir: Directory to save the plot
+        val_indices: List of validation indices to filter the dataset
     """
-    # Create a dataset for plotting
+    # Create a dataset for plotting with validation indices
     plot_dataset = ParticleDatasetReg(
         h5_path=dataset_path,
         classes=classes,
@@ -509,7 +606,7 @@ def plot_per_class_performance(
         std=std,
         padding=False,
         transform=None,
-        indices=None,
+        indices=val_indices,  # Use validation indices
     )
 
     # Create dataloader
@@ -550,13 +647,13 @@ def plot_per_class_performance(
         
         axes[i].set_xlabel(f'Ground Truth Size [nm]')
         axes[i].set_ylabel(f'Predicted Size [nm]')
-        axes[i].set_title(f'Class {cls}\nRMSE: {rmse:.2f}, r: {correlation:.3f}')
+        axes[i].set_title(f'Class {cls} (Validation)\nRMSE: {rmse:.2f}, r: {correlation:.3f}')
         axes[i].legend()
         axes[i].grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(experiment_dir, "per_class_performance.png"),
+        os.path.join(experiment_dir, "per_class_performance_validation.png"),
         format="png",
         dpi=300,
     )
@@ -655,8 +752,8 @@ def main(args):
 
     # Save metrics
     metrics = {
-        "rmse_history": loss_log,
-        "final_rmse": loss_log[-1] if loss_log else None,
+        "mse_history": loss_log,
+        "final_mse": loss_log[-1] if loss_log else None,
         "num_epochs_trained": len(loss_log),
     }
     save_metrics_to_json(metrics, experiment_dir)
@@ -705,8 +802,18 @@ def main(args):
         std=config["data"]["std"],
         device=device,
         experiment_dir=experiment_dir,
+        val_indices=val_idx.tolist(),  # Pass validation indices
     )
-
+    plot_validation_sample_images(
+        model=model,
+        dataset_path=config["data"]["dataset_path"],
+        classes=config["data"]["classes"],
+        mean=config["data"]["mean"],
+        std=config["data"]["std"],
+        device=device,
+        experiment_dir=experiment_dir,
+        val_indices=val_idx.tolist(),
+    )
     print(f"Training completed. Model and plots saved to {experiment_dir}")
 
 

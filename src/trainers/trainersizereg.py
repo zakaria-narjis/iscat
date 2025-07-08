@@ -26,11 +26,11 @@ class ParticleSizeTrainer(nn.Module):
         self.experiment_dir = experiment_dir
         self.writer = writer
         self.verbose = verbose
-        self.training_noise_std = config.get("training_noise_std", 3.0)
+        self.training_noise_std = config.get("training_noise_std", 2.0)
         # Initialize optimizer
         self.optimizer = optim.Adam(
             model.parameters(), lr=self.config["optimizer"]["parameters"]["lr"]
-            , weight_decay=config["optimizer"]["parameters"].get("weight_decay", 0.0)
+            , weight_decay=config["optimizer"]["parameters"].get("weight_decay", 5e-2)
         )
         
         # Initialize scheduler
