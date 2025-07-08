@@ -1,6 +1,6 @@
 seed: 0
 data:
-  classes: [0,1]  # Classes to include in training
+  classes: [0]  # Classes to include in training
   mean: null  # If null, will be computed from dataset # mean classes 0&1 7541.1983
   std: null   # If null, will be computed from dataset # std classes 0&1 1316.1215
   padding: false
