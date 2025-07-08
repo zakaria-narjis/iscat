@@ -15,7 +15,6 @@ import numpy as np
 import json
 from torchvision.transforms import v2
 from matplotlib import pyplot as plt
-import matplotlib
 import logging
 from sklearn.model_selection import StratifiedShuffleSplit
 
@@ -94,15 +93,15 @@ def get_args_parser(add_help=True):
     return parser
 
 
-def create_dataloaders(train_dataset, batch_size, num_workers=0):
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
+def create_dataloaders(dataset, batch_size, num_workers=0):
+    data_loader = DataLoader(
+        dataset,
+        batch_size=min(len(dataset), batch_size),  # Ensure batch size is at least 1
         shuffle=True,
         drop_last=True,
         num_workers=num_workers,
     )
-    return train_loader
+    return data_loader
 
 
 def sanitize_filename(name):
@@ -129,7 +128,6 @@ def set_random_seed(seed):
 
 def getdatetime():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
 
 def write_config_to_tensorboard(writer, config):
     """
@@ -707,7 +705,6 @@ def main(args):
     # Stratified split
     splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=config["seed"])
     train_idx, val_idx = next(splitter.split(np.zeros(len(class_labels)), class_labels))
-
     # Apply transforms only on train split
     train_dataset = ParticleDatasetReg(
         h5_path=config["data"]["dataset_path"],

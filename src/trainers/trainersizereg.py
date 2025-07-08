@@ -6,8 +6,8 @@ from torch.utils.tensorboard import SummaryWriter
 import logging
 import os
 from tqdm import tqdm
-import numpy as np
-
+from src.losses import MMDLoss, KNNDivergenceLoss
+import math
 
 class ParticleSizeTrainer(nn.Module):
     def __init__(
@@ -26,7 +26,7 @@ class ParticleSizeTrainer(nn.Module):
         self.experiment_dir = experiment_dir
         self.writer = writer
         self.verbose = verbose
-        self.training_noise_std = config.get("training_noise_std", 2.0)
+        self.training_noise_std = config.get("training_noise_std", 0.0)
         # Initialize optimizer
         self.optimizer = optim.Adam(
             model.parameters(), lr=self.config["optimizer"]["parameters"]["lr"]
@@ -43,7 +43,8 @@ class ParticleSizeTrainer(nn.Module):
         
         # Loss function (mse)
         self.criterion = nn.MSELoss()
-        
+        # self.criterion = KNNDivergenceLoss(k_neighbors=int(math.sqrt(config["batch_size"])))
+        # self.criterion = MMDLoss()
         # Checkpoint path
         self.checkpoint_path = os.path.join(experiment_dir, "best_model.pth")
         
@@ -55,7 +56,7 @@ class ParticleSizeTrainer(nn.Module):
         )
         
         # Get unique classes from config for per-class logging
-        self.classes = self.config.get("classes", [0, 1])
+        self.classes = self.config.get("classes")
         
     def train_epoch(self, train_dataloader: DataLoader):
         """

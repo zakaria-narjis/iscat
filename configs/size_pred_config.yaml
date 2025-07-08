@@ -15,7 +15,7 @@ training:
     type: "Adam"
     parameters:
       lr: 1e-4 #5e-2
-      weight_decay: 5e-2
+      weight_decay: 5e-2 #5e-2
   scheduler:
     type: "ReduceLROnPlateau"
     parameters:
@@ -39,7 +39,7 @@ training:
     max_value: null   # Maximum size value (in nm), null means no maximum
     k: 3000           # k parameter for KNN divergence loss
     cycle: 5          # Regenerate distribution every N epochs
-
+  classes: ${data.classes}  # Classes to include in training
 logging:
   tensorboard:
     log_dir: "experiments/runs/size_prediction"

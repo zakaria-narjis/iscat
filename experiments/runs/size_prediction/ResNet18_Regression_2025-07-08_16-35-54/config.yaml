@@ -12,6 +12,8 @@ logging:
 seed: 0
 training:
   batch_size: 32
+  classes:
+  - 0
   device: cuda:0
   early_stopping:
     enabled: true
