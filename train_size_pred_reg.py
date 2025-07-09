@@ -4,7 +4,8 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 from src.trainers.trainersizereg import ParticleSizeTrainer
-from src.data_processing.size_dataset import ParticleDatasetReg  
+# from src.data_processing.size_dataset import ParticleDatasetReg  
+from src.data_processing.size_dataset import ParticleDatasetReg, generate_global_size_labels  
 from src.models.resnet import ResNet18
 import re
 from datetime import datetime
@@ -202,27 +203,30 @@ def write_config_to_tensorboard(writer, config):
         writer.add_text(f"Configuration/{section}", "\n".join(table_rows))
 
 def plot_prediction_monotonicity(
-    model, dataset_path, classes, mean, std, device, experiment_dir, num_samples=1000
+    model, data, labels, size_labels, mean, std, device, experiment_dir, class_to_idx, num_samples=1000,
 ):
     """
     Plot prediction vs contrast to analyze monotonicity.
     
     Args:
         model: Trained model
-        dataset_path: Path to the HDF5 dataset
-        classes: List of classes to include
+        data: Pre-computed data array
+        labels: Pre-computed labels array
+        size_labels: Pre-computed size labels array
         mean: Normalization mean
         std: Normalization std
         device: Device to run inference on
         experiment_dir: Directory to save the plot
         num_samples: Number of samples to use for the plot (default: 1000)
     """
-    # Create a dataset for plotting
+    # Create a dataset for plotting using pre-computed data
     plot_dataset = ParticleDatasetReg(
-        h5_path=dataset_path,
-        classes=classes,
+        data=data,
+        labels=labels,
+        size_labels=size_labels,
         mean=mean,
         std=std,
+        class_to_idx=class_to_idx,
         padding=False,
         transform=None,
         indices=None,
@@ -234,10 +238,12 @@ def plot_prediction_monotonicity(
         # Randomly sample indices
         sample_indices = torch.randperm(total_samples)[:num_samples]
         plot_dataset = ParticleDatasetReg(
-            h5_path=dataset_path,
-            classes=classes,
+            data=data,
+            labels=labels,
+            size_labels=size_labels,
             mean=mean,
             std=std,
+            class_to_idx=class_to_idx,
             padding=False,
             transform=None,
             indices=sample_indices.tolist(),
@@ -250,8 +256,8 @@ def plot_prediction_monotonicity(
     
     # Get predictions and calculate contrast
     with torch.no_grad():
-        data = next(iter(plot_dataloader))
-        images = data[0]  # Shape: (batch_size, channels, height, width)
+        batch_data = next(iter(plot_dataloader))
+        images = batch_data[0]  # Shape: (batch_size, channels, height, width)
         predictions = model(images.to(device)).cpu().numpy().flatten()
         
         # Calculate contrast for each image
@@ -297,33 +303,38 @@ def plot_prediction_monotonicity(
 
 def plot_loss_and_distribution(
     model,
-    dataset_path,
-    classes,
+    data,
+    labels,
+    size_labels,
     mean,
     std,
     device,
     loss_log,
     experiment_dir,
+    class_to_idx,
 ):
     """
     Plot training loss history and compare ground truth vs predicted size distribution.
 
     Args:
         model: Trained model
-        dataset_path: Path to the HDF5 dataset
-        classes: List of classes to include
+        data: Pre-computed data array
+        labels: Pre-computed labels array
+        size_labels: Pre-computed size labels array
         mean: Normalization mean
         std: Normalization std
         device: Device to run inference on
         loss_log: List of loss values recorded during training
         experiment_dir: Directory to save the plot
     """
-    # Create a dataset for plotting
+    # Create a dataset for plotting using pre-computed data
     plot_dataset = ParticleDatasetReg(
-        h5_path=dataset_path,
-        classes=classes,
+        data=data,
+        labels=labels,
+        size_labels=size_labels,
         mean=mean,
         std=std,
+        class_to_idx=class_to_idx,
         padding=True,
         transform=None,
         indices=None,
@@ -336,10 +347,10 @@ def plot_loss_and_distribution(
     
     # Get predictions and ground truth
     with torch.no_grad():
-        data = next(iter(plot_dataloader))
-        images = data[0]
-        class_labels = data[1]
-        size_labels = data[2]  # Ground truth sizes
+        batch_data = next(iter(plot_dataloader))
+        images = batch_data[0]
+        class_labels = batch_data[1]
+        gt_size_labels = batch_data[2]  # Ground truth sizes
         predictions = model(images.to(device)).cpu().detach().numpy().flatten()
 
     # Create the plot
@@ -360,7 +371,7 @@ def plot_loss_and_distribution(
 
     # Right subplot: Histogram of predictions vs ground truth
     axes[1].hist(
-        size_labels.numpy(),
+        gt_size_labels.numpy(),
         bins=50,
         alpha=0.6,
         label="Ground Truth",
@@ -390,15 +401,16 @@ def plot_loss_and_distribution(
     plt.close(fig)
 
 def plot_validation_sample_images(
-    model, dataset_path, classes, mean, std, device, experiment_dir, val_indices
+    model, data, labels, size_labels, mean, std,class_to_idx, device, experiment_dir, val_indices
 ):
     """
     Plot a grid of sample images from validation set with their predicted sizes.
 
     Args:
         model: Trained model
-        dataset_path: Path to the HDF5 dataset
-        classes: List of classes to include
+        data: Pre-computed data array
+        labels: Pre-computed labels array
+        size_labels: Pre-computed size labels array
         mean: Normalization mean
         std: Normalization std
         device: Device to run inference on
@@ -407,10 +419,12 @@ def plot_validation_sample_images(
     """
     # Create a dataset for plotting using only validation indices
     plot_dataset = ParticleDatasetReg(
-        h5_path=dataset_path,
-        classes=classes,
+        data=data,
+        labels=labels,
+        size_labels=size_labels,
         mean=mean,
         std=std,
+        class_to_idx=class_to_idx,
         padding=False,
         transform=None,
         indices=val_indices,
@@ -423,9 +437,9 @@ def plot_validation_sample_images(
 
     # Get predictions
     with torch.no_grad():
-        data = next(iter(plot_dataloader))
-        imgs = data[0]  # (batch_size, channels, height, width)
-        ground_truth_sizes = data[2]  # Ground truth sizes
+        batch_data = next(iter(plot_dataloader))
+        imgs = batch_data[0]  # (batch_size, channels, height, width)
+        ground_truth_sizes = batch_data[2]  # Ground truth sizes
         sizes = model(imgs.to(device)).cpu().squeeze()
 
         # Find min, max indices
@@ -487,26 +501,29 @@ def plot_validation_sample_images(
     plt.close(fig)
 
 def plot_sample_images(
-    model, dataset_path, classes, mean, std, device, experiment_dir
+    model, data, labels, size_labels, mean, std, device, class_to_idx,experiment_dir
 ):
     """
     Plot a grid of sample images with their predicted sizes.
 
     Args:
         model: Trained model
-        dataset_path: Path to the HDF5 dataset
-        classes: List of classes to include
+        data: Pre-computed data array
+        labels: Pre-computed labels array
+        size_labels: Pre-computed size labels array
         mean: Normalization mean
         std: Normalization std
         device: Device to run inference on
         experiment_dir: Directory to save the plot
     """
-    # Create a dataset for plotting
+    # Create a dataset for plotting using pre-computed data
     plot_dataset = ParticleDatasetReg(
-        h5_path=dataset_path,
-        classes=classes,
+        data=data,
+        labels=labels,
+        size_labels=size_labels,
         mean=mean,
         std=std,
+        class_to_idx=class_to_idx,
         padding=False,
         transform=None,
         indices=None,
@@ -519,9 +536,9 @@ def plot_sample_images(
 
     # Get predictions
     with torch.no_grad():
-        data = next(iter(plot_dataloader))
-        imgs = data[0]  # (batch_size, channels, height, width)
-        ground_truth_sizes = data[2]  # Ground truth sizes
+        batch_data = next(iter(plot_dataloader))
+        imgs = batch_data[0]  # (batch_size, channels, height, width)
+        ground_truth_sizes = batch_data[2]  # Ground truth sizes
         sizes = model(imgs.to(device)).cpu().squeeze()
 
         # Find min, max indices
@@ -581,27 +598,31 @@ def plot_sample_images(
 
 
 def plot_per_class_performance(
-    model, dataset_path, classes, mean, std, device, experiment_dir, val_indices=None
+    model, data, labels, size_labels, mean, std, device,class_to_idx, experiment_dir, classes, val_indices=None
 ):
     """
     Plot scatter plots of predictions vs ground truth for each class on validation dataset.
     
     Args:
         model: Trained model
-        dataset_path: Path to the HDF5 dataset
-        classes: List of classes to include
+        data: Pre-computed data array
+        labels: Pre-computed labels array
+        size_labels: Pre-computed size labels array
         mean: Normalization mean
         std: Normalization std
         device: Device to run inference on
         experiment_dir: Directory to save the plot
+        classes: List of classes to include
         val_indices: List of validation indices to filter the dataset
     """
     # Create a dataset for plotting with validation indices
     plot_dataset = ParticleDatasetReg(
-        h5_path=dataset_path,
-        classes=classes,
+        data=data,
+        labels=labels,
+        size_labels=size_labels,
         mean=mean,
         std=std,
+        class_to_idx=class_to_idx,
         padding=False,
         transform=None,
         indices=val_indices,  # Use validation indices
@@ -614,10 +635,10 @@ def plot_per_class_performance(
 
     # Get predictions
     with torch.no_grad():
-        data = next(iter(plot_dataloader))
-        images = data[0]
-        class_labels = data[1]
-        size_labels = data[2]  # Ground truth sizes
+        batch_data = next(iter(plot_dataloader))
+        images = batch_data[0]
+        class_labels = batch_data[1]
+        gt_size_labels = batch_data[2]  # Ground truth sizes
         predictions = model(images.to(device)).cpu().numpy().flatten()
 
     # Create subplots for each class
@@ -628,7 +649,7 @@ def plot_per_class_performance(
     for i, cls in enumerate(classes):
         # Filter data for this class
         class_mask = class_labels == cls
-        class_gt = size_labels[class_mask].numpy()
+        class_gt = gt_size_labels[class_mask].numpy()
         class_pred = predictions[class_mask]
         
         # Scatter plot
@@ -683,46 +704,55 @@ def main(args):
     with open(os.path.join(experiment_dir, "config.yaml"), "w") as f:
         yaml.dump(config, f)
 
+    # Generate global size labels once
+    print("Generating global size labels...")
+    global_data, global_labels, global_size_labels, class_to_idx, mean, std = generate_global_size_labels(
+        h5_path=config["data"]["dataset_path"],
+        classes=config["data"]["classes"],
+        mean=config["data"]["mean"],
+        std=config["data"]["std"]
+    )
+    print(f"Generated size labels for {len(global_data)} samples")
+
+    # Extract class labels for stratified split
+    class_labels = global_labels.tolist()
+
+    # Stratified split
+    splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=config["seed"])
+    train_idx, val_idx = next(splitter.split(np.zeros(len(class_labels)), class_labels))
+    
+    print(f"Train samples: {len(train_idx)}, Validation samples: {len(val_idx)}")
+
+    # Define augmentation
     augmentation = v2.Compose(
         [
             v2.RandomVerticalFlip(p=0.5),
             v2.RandomHorizontalFlip(p=0.5),
         ]
     )
-    
-    full_dataset = ParticleDatasetReg(
-        h5_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        transform=None,
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
-        padding=config["data"]["padding"],
-    )
 
-    # Extract class labels for stratified split
-    class_labels = [full_dataset[i][1].item() for i in range(len(full_dataset))]
-
-    # Stratified split
-    splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=config["seed"])
-    train_idx, val_idx = next(splitter.split(np.zeros(len(class_labels)), class_labels))
-    # Apply transforms only on train split
+    # Create datasets using pre-computed global data
     train_dataset = ParticleDatasetReg(
-        h5_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        transform=augmentation,
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        class_to_idx=class_to_idx,
+        mean=mean,
+        std=std,
         padding=config["data"]["padding"],
+        transform=augmentation,
         indices=train_idx.tolist(),
     )
 
     val_dataset = ParticleDatasetReg(
-        h5_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        transform=None,
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        class_to_idx=class_to_idx,
+        mean=mean,
+        std=std,
         padding=config["data"]["padding"],
+        transform=None,
         indices=val_idx.tolist(),
     )
 
@@ -730,7 +760,7 @@ def main(args):
     val_loader = create_dataloaders(val_dataset, config["training"]["batch_size"], config["data"]["num_workers"])
 
     # Initialize model
-    model = ResNet18(num_classes=1)  # For regression, output is a single value
+    model = ResNet18(num_classes=1, in_channels=1)  # For regression, output is a single value
     model = model.to(device)
 
     # Initialize trainer
@@ -746,7 +776,6 @@ def main(args):
     # Train the model
     loss_log = trainer.train(train_loader, val_loader, num_epochs=config["training"]["num_epochs"])
 
-
     # Save metrics
     metrics = {
         "mse_history": loss_log,
@@ -758,10 +787,12 @@ def main(args):
     # Plot loss and distribution comparison
     plot_loss_and_distribution(
         model=model,
-        dataset_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
         device=device,
         loss_log=loss_log,
         experiment_dir=experiment_dir,
@@ -770,10 +801,12 @@ def main(args):
     # Plot sample images with predicted sizes
     plot_sample_images(
         model=model,
-        dataset_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
         device=device,
         experiment_dir=experiment_dir,
     )
@@ -781,10 +814,12 @@ def main(args):
     # Plot prediction monotonicity
     plot_prediction_monotonicity(
         model=model,
-        dataset_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
         device=device,
         experiment_dir=experiment_dir,
         num_samples=1000  
@@ -793,20 +828,27 @@ def main(args):
     # Plot per-class performance
     plot_per_class_performance(
         model=model,
-        dataset_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
         device=device,
         experiment_dir=experiment_dir,
+        classes=config["data"]["classes"],
         val_indices=val_idx.tolist(),  # Pass validation indices
     )
+    
+    # Plot validation sample images
     plot_validation_sample_images(
         model=model,
-        dataset_path=config["data"]["dataset_path"],
-        classes=config["data"]["classes"],
-        mean=config["data"]["mean"],
-        std=config["data"]["std"],
+        data=global_data,
+        labels=global_labels,
+        size_labels=global_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
         device=device,
         experiment_dir=experiment_dir,
         val_indices=val_idx.tolist(),

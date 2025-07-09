@@ -201,57 +201,131 @@ def assign_p_by_contrast(data, Cls, sizes):
     return P_assigned
 
 
+def generate_global_size_labels(h5_path, classes, mean=None, std=None):
+    """
+    Generate size labels for the entire dataset (all classes).
+    This should be called once and the results shared between train/val datasets.
+    
+    Args:
+        h5_path (str): Path to HDF5 file
+        classes (list): List of classes to include
+        mean (float, optional): Normalization mean
+        std (float, optional): Normalization std
+    
+    Returns:
+        tuple: (data, labels, size_labels, class_to_idx)
+    """
+    with h5py.File(h5_path, "r") as h5_file:
+        mask = np.isin(h5_file["labels"], classes)
+        data = h5_file["data"][mask][:]
+        labels = h5_file["labels"][mask][:]
+
+    # Create class mapping to handle non-consecutive class indices
+    class_to_idx = {c: i for i, c in enumerate(classes)}
+    
+    # Map original labels to new consecutive indices
+    mapped_labels = np.array([class_to_idx[label] for label in labels])
+    
+    # Get normalization stats if not provided
+    if mean is None or std is None:
+        mean, std = compute_normalization_stats(h5_path, classes)
+    
+    # Generate size labels based on particle statistics
+    particles_stats = {0:(80, 22.5,10,float("inf")),
+                       1:(302, 25,-float("inf"),float("inf")),
+                       2:(626, 128,-float("inf"),float("inf")),
+                       3:(1300, 150,-float("inf"),float("inf"))}
+    particles_stats = {class_to_idx[k]: v for k, v in particles_stats.items() if k in classes}
+    
+    distributions = [
+        trunc_normal_(
+            torch.empty(len(mapped_labels[mapped_labels==k])),v[0], v[1], v[2], v[3]
+        ) for k, v in particles_stats.items()
+    ]
+    
+    size_labels = assign_p_by_contrast(
+        data[:,np.newaxis,...], mapped_labels, distributions
+    )
+    
+    return data, mapped_labels, size_labels, class_to_idx, mean, std
+
+
 class ParticleDatasetReg(Dataset):
 
     def __init__(
         self,
-        h5_path,
+        h5_path=None,
         classes=[0, 1],
         transform=None,
         mean=None,
         std=None,
         padding=False,
         indices=None,
+        # New parameters for pre-computed data
+        data=None,
+        labels=None,
+        size_labels=None,
+        class_to_idx=None,
     ):
         self.padding = padding
-        # Filter data for selected classes
-
-        with h5py.File(h5_path, "r") as h5_file:
-            mask = np.isin(h5_file["labels"], classes)
-            if indices is None:
-                self.data = h5_file["data"][mask][:]
-                self.labels = h5_file["labels"][mask][:]
-            else:
-                self.data = h5_file["data"][mask][indices]
-                self.labels = h5_file["labels"][mask][indices]
-
-        # Create class mapping to handle non-consecutive class indices
-        self.class_to_idx = {c: i for i, c in enumerate(classes)}
-        self.num_classes = len(classes)
-
-        # Map original labels to new consecutive indices
-        self.labels = np.array(
-            [self.class_to_idx[label] for label in self.labels]
-        )
         self.transform = transform
-        if mean is None or std is None:
-            self.mean, self.std = compute_normalization_stats(h5_path, classes)
-        else:
+        
+        # If pre-computed data is provided, use it directly
+        if data is not None and labels is not None and size_labels is not None:
+            if indices is None:
+                self.data = data
+                self.labels = labels
+                self.size_labels = size_labels
+            else:
+                self.data = data[indices]
+                self.labels = labels[indices]
+                self.size_labels = size_labels[indices]
+            
+            self.class_to_idx = class_to_idx
+            self.num_classes = len(class_to_idx)
             self.mean = mean
             self.std = std
-        particles_stats = {0:(80, 22.5,10,float("inf")),
-                           1:(302, 25,-float("inf"),float("inf")),
-                           2:(626, 128,-float("inf"),float("inf")),
-                           3:(1300, 150,-float("inf"),float("inf"))}
-        particles_stats = {self.class_to_idx[k]: v for k, v in particles_stats.items() if k in classes}
-        distributions = [
-            trunc_normal_(
-                torch.empty(len(self.labels[self.labels==k])),v[0], v[1], v[2], v[3]
-            ) for k, v in particles_stats.items()
-        ]
-        self.size_labels = assign_p_by_contrast(
-            self.data[:,np.newaxis,...], self.labels, distributions
-        )
+            
+        else:
+            # Original behavior - generate size labels (not recommended for train/val split)
+            with h5py.File(h5_path, "r") as h5_file:
+                mask = np.isin(h5_file["labels"], classes)
+                if indices is None:
+                    self.data = h5_file["data"][mask][:]
+                    self.labels = h5_file["labels"][mask][:]
+                else:
+                    self.data = h5_file["data"][mask][indices]
+                    self.labels = h5_file["labels"][mask][indices]
+
+            # Create class mapping to handle non-consecutive class indices
+            self.class_to_idx = {c: i for i, c in enumerate(classes)}
+            self.num_classes = len(classes)
+
+            # Map original labels to new consecutive indices
+            self.labels = np.array(
+                [self.class_to_idx[label] for label in self.labels]
+            )
+            
+            if mean is None or std is None:
+                self.mean, self.std = compute_normalization_stats(h5_path, classes)
+            else:
+                self.mean = mean
+                self.std = std
+                
+            particles_stats = {0:(80, 22.5,10,float("inf")),
+                               1:(302, 25,-float("inf"),float("inf")),
+                               2:(626, 128,-float("inf"),float("inf")),
+                               3:(1300, 150,-float("inf"),float("inf"))}
+            particles_stats = {self.class_to_idx[k]: v for k, v in particles_stats.items() if k in classes}
+            distributions = [
+                trunc_normal_(
+                    torch.empty(len(self.labels[self.labels==k])),v[0], v[1], v[2], v[3]
+                ) for k, v in particles_stats.items()
+            ]
+            self.size_labels = assign_p_by_contrast(
+                self.data[:,np.newaxis,...], self.labels, distributions
+            )
+
     def __len__(self):
         return len(self.labels)
 
