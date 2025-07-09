@@ -5,7 +5,7 @@ data:
   std: null   # If null, will be computed from dataset # std classes 0&1 1316.1215
   padding: false
   # dataset_path: "/data_ssd2/iscat_data/brightfield_particles_y.hdf5" "/nfshome/narjis/Downloads/brightfield_particles.hdf5"
-  dataset_path: "/home/zakarianarjis/Downloads/brightfield_particles.hdf5" #particles_3d_mf.hdf5 brightfield_particles.hdf5
+  dataset_path: "/home/zakarianarjis/Downloads/particles_3d_mf.hdf5" #particles_3d_mf.hdf5 brightfield_particles.hdf5
   num_workers: 12
 training:
   batch_size: 32 #16000

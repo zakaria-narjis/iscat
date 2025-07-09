@@ -1,68 +1,80 @@
+# size_dataset_3D.py
 import h5py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 import math
 import warnings
+from tqdm import tqdm
 
-def compute_normalization_stats(h5_path, classes=None):
+def compute_normalization_stats(h5_path, classes=None, batch_size=512):
     """
-    Compute mean and standard deviation for z-score normalization.
+    Compute mean and standard deviation for z-score normalization in batches.
 
     Args:
         h5_path (str): Path to HDF5 file
         classes (list, optional): List of classes to include in computation
+        batch_size (int): Batch size for processing
 
     Returns:
         tuple: (mean, std) computed across all data points
     """
     with h5py.File(h5_path, "r") as h5_file:
-        data = h5_file["data"][:]
         labels = h5_file["labels"][:]
-
+        data_ds = h5_file["data"]
+        N = data_ds.shape[0]
+        
         if classes is not None:
-            # Filter data for selected classes
+            # Filter indices for selected classes
             mask = np.isin(labels, classes)
-            data = data[mask]
-
-        # Compute statistics across all dimensions
-        mean = np.mean(data)
-        std = np.std(data)
+            indices = np.where(mask)[0]
+        else:
+            indices = np.arange(N)
+        
+        # Compute statistics in batches
+        sum_vals = 0.0
+        sum_sq_vals = 0.0
+        total_count = 0
+        
+        for start in tqdm(range(0, len(indices), batch_size), desc="Computing normalization stats"):
+            end = min(start + batch_size, len(indices))
+            batch_indices = indices[start:end]
+            batch_data = data_ds[batch_indices]
+            
+            sum_vals += np.sum(batch_data)
+            sum_sq_vals += np.sum(batch_data ** 2)
+            total_count += batch_data.size
+        
+        mean = sum_vals / total_count
+        std = np.sqrt(sum_sq_vals / total_count - mean ** 2)
 
         print(f"Computed statistics: mean = {mean:.4f}, std = {std:.4f}")
-
         return mean, std
 
-
-def contrast_from_frames(images: np.ndarray) -> np.ndarray:
+def contrast_from_frames_batched(h5_path, batch_size=2048):
     """
-    Compute contrast from 3D images by calculating standard deviation in each frame
-    and summing across all frames.
-    
+    Compute batched contrast scores for 3D images lazily from HDF5.
     Args:
-        images: Array of shape (B, H, W, C) where C is number of frames/channels
-    
+        h5_path: Path to HDF5 file.
+        batch_size: Batch size for computing contrast in memory.
     Returns:
-        Array of shape (B,) with contrast values (sum of std across all frames)
+        Numpy array of contrast scores for each image in dataset.
     """
-    if images.ndim == 3:
-        # Single image case: (H, W, C)
-        images = images[np.newaxis, ...]  # Add batch dimension
-    
-    B, H, W, C = images.shape
-    
-    # Compute standard deviation for each frame across spatial dimensions
-    # Reshape to (B, H*W, C) for easier computation
-    frames_reshaped = images.reshape(B, H * W, C)
-    
-    # Compute std for each frame (across spatial dimensions)
-    frame_stds = np.std(frames_reshaped, axis=1)  # Shape: (B, C)
-    
-    # Sum contrast across all frames
-    total_contrast = np.sum(frame_stds, axis=1)  # Shape: (B,)
-    
-    return total_contrast
-
+    with h5py.File(h5_path, 'r') as f:
+        data_ds = f["data"]
+        N = data_ds.shape[0]
+        H, W, C = data_ds.shape[1:]
+        contrast_scores = np.zeros(N, dtype=np.float32)
+        
+        for start in tqdm(range(0, N, batch_size), desc="Computing contrast"):
+            end = min(start + batch_size, N)
+            batch = data_ds[start:end]  # Shape: (B, H, W, C)
+            frames_reshaped = batch.reshape(batch.shape[0], -1, C)  # (B, H*W, C)
+            frame_stds = np.std(frames_reshaped, axis=1)  # (B, C)
+            total_contrast = np.sum(frame_stds, axis=1)  # (B,)
+            contrast_scores[start:end] = total_contrast
+            
+        return contrast_scores
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     # Cut & paste from PyTorch official master until it's in a few official releases - RW
@@ -101,264 +113,154 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         tensor.clamp_(min=a, max=b)
         return tensor
 
-
 def trunc_normal_(tensor, mean=0.0, std=1.0, a=-2.0, b=2.0):
     ## type: (Tensor, float, float, float, float) -> Tensor
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
-
-# Keep original function for backwards compatibility
-def assign_p_by_contrast(data, Cls, sizes):
+def assign_p_by_contrast(contrast_scores, labels, sizes):
     """
-    Assign size labels based on contrast values.
+    Assign size labels based on contrast scores.
     
     Args:
-        data: Array of shape (N, H, W, C) 
-        Cls: Array of class labels (N,)
-        sizes: List of distributions for each class
+        contrast_scores: Array of contrast scores
+        labels: Array of class labels
+        sizes: List of size distributions per class
     
     Returns:
-        Array of assigned size labels (N,)
-    """
-    C = contrast_from_frames(data)  # (N,)
-    N = len(Cls)
-    P_assigned = np.empty(N, dtype=np.float32)
-
-    for class_id, P in enumerate(sizes):
-        idx = np.where(Cls == class_id)[0]
-        if len(idx) > 0:  # Check if class exists
-            sorted_idx = idx[np.argsort(C[idx])]
-            sorted_P = np.sort(P)
-            P_assigned[sorted_idx] = sorted_P
-
-    return P_assigned
-
-
-def estimate_memory_usage(chunk_size, data_shape=(16, 16, 201), dtype=np.float32):
-    """
-    Estimate memory usage for a given chunk size.
-    
-    Args:
-        chunk_size: Number of samples in chunk
-        data_shape: Shape of single data sample
-        dtype: Data type
-    
-    Returns:
-        Memory usage in GB
-    """
-    bytes_per_element = np.dtype(dtype).itemsize
-    elements_per_sample = np.prod(data_shape)
-    total_bytes = chunk_size * elements_per_sample * bytes_per_element
-    total_gb = total_bytes / (1024**3)
-    return total_gb
-
-
-def suggest_chunk_size(available_ram_gb=30, data_shape=(16, 16, 201), safety_factor=0.5):
-    """
-    Suggest optimal chunk size based on available RAM.
-    
-    Args:
-        available_ram_gb: Available RAM in GB
-        data_shape: Shape of single data sample
-        safety_factor: Safety factor (0.5 means use 50% of available RAM)
-    
-    Returns:
-        Suggested chunk size
-    """
-    target_memory = available_ram_gb * safety_factor
-    bytes_per_element = np.dtype(np.float32).itemsize
-    elements_per_sample = np.prod(data_shape)
-    bytes_per_sample = elements_per_sample * bytes_per_element
-    
-    suggested_chunk_size = int(target_memory * (1024**3) / bytes_per_sample)
-    
-    print(f"Available RAM: {available_ram_gb} GB")
-    print(f"Target memory usage: {target_memory} GB")
-    print(f"Memory per sample: {bytes_per_sample / (1024**2):.2f} MB")
-    print(f"Suggested chunk size: {suggested_chunk_size}")
-    
-    return suggested_chunk_size
-
-
-def assign_p_by_contrast_chunked(h5_path, data_indices, labels, sizes, chunk_size=1000):
-    """
-    Assign size labels based on contrast values using chunked processing.
-    
-    Args:
-        h5_path: Path to HDF5 file
-        data_indices: Array of indices to load
-        labels: Array of class labels (N,)
-        sizes: List of distributions for each class
-        chunk_size: Number of samples to process at once
-    
-    Returns:
-        Array of assigned size labels (N,)
+        Array of assigned size labels
     """
     N = len(labels)
-    contrasts = np.empty(N, dtype=np.float32)
-    
-    # Process data in chunks to avoid memory issues
-    with h5py.File(h5_path, "r") as h5_file:
-        for start_idx in range(0, N, chunk_size):
-            end_idx = min(start_idx + chunk_size, N)
-            
-            # Load chunk of data
-            chunk_data = []
-            for i in range(start_idx, end_idx):
-                chunk_data.append(h5_file["data"][data_indices[i]])
-            chunk_data = np.array(chunk_data)
-            
-            # Compute contrast for this chunk
-            chunk_contrasts = contrast_from_frames(chunk_data)
-            contrasts[start_idx:end_idx] = chunk_contrasts
-            
-            # Clear chunk from memory
-            del chunk_data
-    
-    # Now assign sizes based on computed contrasts
     P_assigned = np.empty(N, dtype=np.float32)
-    
+
     for class_id, P in enumerate(sizes):
         idx = np.where(labels == class_id)[0]
-        if len(idx) > 0:  # Check if class exists
-            sorted_idx = idx[np.argsort(contrasts[idx])]
-            sorted_P = np.sort(P)
-            P_assigned[sorted_idx] = sorted_P
+        sorted_idx = idx[np.argsort(contrast_scores[idx])]
+        sorted_P = np.sort(P)
+        P_assigned[sorted_idx] = sorted_P
 
     return P_assigned
 
+def generate_global_size_labels(h5_path, classes, mean=None, std=None):
+    """
+    Generate size labels for the entire dataset (all classes).
+    This should be called once and the results shared between train/val datasets.
+    
+    Args:
+        h5_path (str): Path to HDF5 file
+        classes (list): List of classes to include
+        mean (float, optional): Normalization mean
+        std (float, optional): Normalization std
+    
+    Returns:
+        tuple: (mapped_labels, size_labels, class_to_idx, mean, std, filtered_indices, filtered_contrast_scores)
+    """
+    with h5py.File(h5_path, "r") as h5_file:
+        labels = h5_file["labels"][:]
+        mask = np.isin(labels, classes)
+        filtered_labels = labels[mask]
+        filtered_indices = np.where(mask)[0]
+        
+    # Create class mapping to handle non-consecutive class indices
+    class_to_idx = {c: i for i, c in enumerate(classes)}
+    
+    # Map original labels to new consecutive indices
+    mapped_labels = np.array([class_to_idx[label] for label in filtered_labels])
+    
+    # Get normalization stats if not provided
+    if mean is None or std is None:
+        mean, std = compute_normalization_stats(h5_path, classes)
+    
+    # Compute contrast scores for all data
+    print("Computing contrast scores...")
+    all_contrast_scores = contrast_from_frames_batched(h5_path)
+    filtered_contrast_scores = all_contrast_scores[filtered_indices]
+    
+    # Generate size labels based on particle statistics
+    particles_stats = {0:(80, 22.5, 10, float("inf")),
+                       1:(302, 25, -float("inf"), float("inf")),
+                       2:(626, 128, -float("inf"), float("inf")),
+                       3:(1300, 150, -float("inf"), float("inf"))}
+    particles_stats = {class_to_idx[k]: v for k, v in particles_stats.items() if k in classes}
+    
+    distributions = [
+        trunc_normal_(
+            torch.empty(len(mapped_labels[mapped_labels==k])), v[0], v[1], v[2], v[3]
+        ) for k, v in particles_stats.items()
+    ]
+    
+    size_labels = assign_p_by_contrast(
+        filtered_contrast_scores, mapped_labels, distributions
+    )
+    
+    return mapped_labels, size_labels, class_to_idx, mean, std, filtered_indices, filtered_contrast_scores
 
 class ParticleDatasetReg(Dataset):
-    """Custom Dataset for 3D particle data with flexible class selection and normalization."""
+    """Regression dataset for particle size prediction."""
 
     def __init__(
         self,
         h5_path,
-        classes=[0, 1],
+        labels, # These are already filtered and mapped
+        size_labels, # These are already filtered
+        class_to_idx,
         transform=None,
         mean=None,
         std=None,
-        indices=None,
-        lazy_loading=True,
         padding=False,
+        indices=None, # These are indices into the filtered labels/size_labels (e.g., train_idx or val_idx)
+        original_h5_indices=None # The true indices in the HDF5 file corresponding to 'labels' and 'size_labels'
     ):
-        self.h5_path = h5_path
-        self.lazy_loading = lazy_loading
-        
-        if lazy_loading:
-            # Store only indices and metadata, load data on-demand
-            with h5py.File(h5_path, "r") as h5_file:
-                all_labels = h5_file["labels"][:]  # Load all labels first
-                mask = np.isin(all_labels, classes)
-                self.data_indices = np.where(mask)[0]
-                if indices is not None:
-                    self.data_indices = self.data_indices[indices]
-                self.labels = all_labels[self.data_indices]
-        else:
-            # Load and filter data for selected classes (all in memory)
-            with h5py.File(h5_path, "r") as h5_file:
-                mask = np.isin(h5_file["labels"], classes)
-                if indices is None:
-                    self.data = h5_file["data"][mask][:]  # Shape: (N, 16, 16, 201)
-                    self.labels = h5_file["labels"][mask][:]
-                else:
-                    self.data = h5_file["data"][mask][indices]
-                    self.labels = h5_file["labels"][mask][indices]
-
-        # Create class mapping to handle non-consecutive class indices
-        self.class_to_idx = {c: i for i, c in enumerate(classes)}
-        self.num_classes = len(classes)
-
-        # Map original labels to new consecutive indices
-        self.labels = np.array(
-            [self.class_to_idx[label] for label in self.labels]
-        )
-        
+        self.padding = padding
         self.transform = transform
         
-        # Compute normalization statistics
-        if mean is None or std is None:
-            self.mean, self.std = compute_normalization_stats(h5_path, classes)
-        else:
-            self.mean = mean
-            self.std = std
+        self.class_to_idx = class_to_idx
+        self.num_classes = len(class_to_idx)
+        self.mean = mean
+        self.std = std
+        self.h5_path = h5_path
+        
+        # Open HDF5 file once
+        self.hdf_file = h5py.File(h5_path, "r")
+        self.images_ds = self.hdf_file["data"] # Reference to the dataset
 
-        # Particle size statistics (mean, std, min, max)
-        particles_stats = {
-            0: (80, 22.5, 10, float("inf")),
-            1: (302, 25, -float("inf"), float("inf")),
-            2: (626, 128, -float("inf"), float("inf")),
-            3: (1300, 150, -float("inf"), float("inf"))
-        }
-        
-        # Filter stats for selected classes and remap indices
-        particles_stats = {
-            self.class_to_idx[k]: v 
-            for k, v in particles_stats.items() 
-            if k in classes
-        }
-        
-        # Generate size distributions for each class
-        distributions = []
-        for k, v in particles_stats.items():
-            class_mask = self.labels == k
-            class_count = np.sum(class_mask)
-            if class_count > 0:
-                distribution = trunc_normal_(
-                    torch.empty(class_count), v[0], v[1], v[2], v[3]
-                ).numpy()
-                distributions.append(distribution)
-            else:
-                distributions.append(np.array([]))
-        
-        # For size assignment, we need to compute contrast
-        # This requires loading data (even with lazy loading)
-        if lazy_loading:
-            # Load data temporarily just for contrast computation
-            with h5py.File(h5_path, "r") as h5_file:
-                # Load data using the indices we found
-                temp_data = []
-                for idx in self.data_indices:
-                    temp_data.append(h5_file["data"][idx])
-                temp_data = np.array(temp_data)
-                self.size_labels = assign_p_by_contrast(
-                    temp_data, self.labels, distributions
-                )
-        else:
-            # Assign size labels based on contrast
-            self.size_labels = assign_p_by_contrast(
-                self.data, self.labels, distributions
-            )
+        # Store the overall filtered labels and size_labels, and their original H5 indices
+        self._all_labels = labels
+        self._all_size_labels = size_labels
+        self._all_original_h5_indices = original_h5_indices
 
+        # If specific indices for a subset (like train/val) are provided, use them
+        if indices is not None:
+            self.subset_indices = np.array(indices)
+        else:
+            self.subset_indices = np.arange(len(labels)) # If no specific subset, use all filtered data
+        
     def __len__(self):
-        return len(self.labels)
+        return len(self.subset_indices)
 
-    def __getitem__(self, idx):
-        if self.lazy_loading:
-            # Load data on-demand from disk
-            with h5py.File(self.h5_path, "r") as h5_file:
-                particle = h5_file["data"][self.data_indices[idx]]  # Shape: (16, 16, 201)
-        else:
-            # Get particle data from memory: (16, 16, 201)
-            particle = self.data[idx]
+    def __getitem__(self, idx_in_subset):
+        # Get the index into the _all_ labels/size_labels/original_h5_indices arrays
+        global_idx = self.subset_indices[idx_in_subset]
 
-        # Apply normalization if mean and std are provided
-        if self.mean is not None and self.std is not None:
-            particle = (particle - self.mean) / self.std
+        # Get the true HDF5 index for this sample
+        h5_idx = self._all_original_h5_indices[global_idx]
+        
+        # Get particle data using the true HDF5 index
+        particle = self.images_ds[h5_idx]  # Shape: (201, 16, 16)
+        particle = (particle - self.mean) / self.std
 
-        # Ensure particle is a float32 tensor
+        # Convert to torch tensor for better interpolation
+        # Permute from (H, W, C) to (C, H, W) for PyTorch
         particle = torch.from_numpy(particle).to(torch.float32)
 
         if self.transform:
             particle = self.transform(particle)
 
-        # Get labels
-        class_label = self.labels[idx]
-        size_label = self.size_labels[idx]
-        
+        # Get class and size labels for this sample (from the pre-filtered/mapped arrays)
+        class_label = self._all_labels[global_idx]
+        size_label = self._all_size_labels[global_idx]
         return particle, class_label, size_label
 
-    def close(self):
-        # No file handle to close in this implementation
-        pass
-
+    def __del__(self):
+        # Close the HDF5 file when the dataset object is destroyed
+        if hasattr(self, 'hdf_file') and self.hdf_file:
+            self.hdf_file.close()
