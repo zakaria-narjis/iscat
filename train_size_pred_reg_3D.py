@@ -24,7 +24,7 @@ from tqdm import tqdm
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
-def calculate_class_accuracy_metrics(model, h5_path, labels, size_labels, mean, std, device, class_to_idx, classes, val_indices, original_h5_indices):
+def calculate_val_metrics(model, h5_path, labels, size_labels, mean, std, device, class_to_idx, classes, val_indices, original_h5_indices):
     """
     Calculate accuracy metrics for each class based on size prediction ranges.
     
@@ -174,10 +174,7 @@ def calculate_class_accuracy_metrics(model, h5_path, labels, size_labels, mean, 
         }
     }
 
-
-def save_metrics_to_json(metrics_dict, output_folder, model=None, h5_path=None, labels=None, size_labels=None, 
-                        mean=None, std=None, device=None, class_to_idx=None, classes=None, 
-                        val_indices=None, original_h5_indices=None):
+def save_metrics_to_json(metrics_dict, output_folder):
     """
     Save training metrics dictionary to a JSON file, including class-wise accuracy metrics.
 
@@ -201,44 +198,6 @@ def save_metrics_to_json(metrics_dict, output_folder, model=None, h5_path=None, 
     """
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
-
-    # Calculate class accuracy metrics if all required parameters are provided
-    if all(param is not None for param in [model, h5_path, labels, size_labels, mean, std, device, class_to_idx, classes, val_indices, original_h5_indices]):
-        print("Calculating class-wise accuracy metrics...")
-        class_accuracy_metrics = calculate_class_accuracy_metrics(
-            model=model,
-            h5_path=h5_path,
-            labels=labels,
-            size_labels=size_labels,
-            mean=mean,
-            std=std,
-            device=device,
-            class_to_idx=class_to_idx,
-            classes=classes,
-            val_indices=val_indices,
-            original_h5_indices=original_h5_indices
-        )
-        
-        # Add class accuracy metrics to the main metrics dictionary
-        metrics_dict.update(class_accuracy_metrics)
-        
-        # Print summary
-        print("\nClass-wise Accuracy Summary:")
-        print("-" * 50)
-        for class_id, metrics in class_accuracy_metrics['class_wise_accuracy'].items():
-            print(f"Class {class_id}:")
-            print(f"  Total samples: {metrics['total_samples']}")
-            print(f"  Correct predictions: {metrics['correct_predictions']}")
-            print(f"  Wrong predictions: {metrics['wrong_predictions']}")
-            print(f"  Accuracy: {metrics['accuracy_percentage']:.2f}%")
-            if metrics['size_range']['min_size'] is not None:
-                print(f"  Size range: [{metrics['size_range']['min_size']:.2f}, {metrics['size_range']['max_size']:.2f}] nm")
-            print(f"  RMSE: {metrics['rmse']:.2f}" if metrics['rmse'] is not None else "  RMSE: N/A")
-            print()
-        
-        print(f"Overall Accuracy: {class_accuracy_metrics['overall_accuracy']['overall_accuracy_percentage']:.2f}%")
-        print(f"Total samples: {class_accuracy_metrics['overall_accuracy']['total_samples']}")
-
     # Generate filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"size_pred_metrics_{timestamp}.json"
@@ -390,7 +349,6 @@ def write_config_to_tensorboard(writer, config):
                     continue
 
         writer.add_text(f"Configuration/{section}", "\n".join(table_rows))
-
 
 def plot_prediction_monotonicity(
     model, h5_path, labels, size_labels, contrasts, mean, std, device, experiment_dir, class_to_idx, original_h5_indices, num_samples=1000, plot_indices=None
@@ -597,8 +555,6 @@ def plot_prediction_monotonicity(
     print(f"\nPlots saved:")
     print(f"- Individual class plots: prediction_monotonicity_by_class.png")
     print(f"- Combined plot: prediction_monotonicity_combined.png")
-
-
 
 def plot_loss_and_distribution(
     model, h5_path, labels, size_labels, mean, std, device, loss_log, experiment_dir, class_to_idx, original_h5_indices
@@ -1067,6 +1023,440 @@ def plot_per_class_performance(
     )
     plt.close(fig)
 
+def plot_test_sample_images(
+    model, h5_path, labels, size_labels, mean, std, class_to_idx, device, experiment_dir, test_indices, original_h5_indices
+):
+    """
+    Plot a grid of sample images from test set with their predicted sizes for 3D data.
+
+    Args:
+        model: Trained model
+        h5_path: Path to HDF5 file
+        labels: Pre-computed labels array (filtered and mapped)
+        size_labels: Pre-computed size labels array
+        mean: Normalization mean
+        std: Normalization std
+        class_to_idx: Dictionary for class mapping
+        device: Device to run inference on
+        experiment_dir: Directory to save the plot
+        test_indices: List of test indices (relative to labels/size_labels) to use for plotting
+        original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
+    """
+    # Create a dataset for plotting using only test indices
+    plot_dataset = ParticleDatasetReg(
+        h5_path=h5_path,
+        labels=labels,
+        size_labels=size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
+        transform=None,
+        indices=test_indices,  # Use test indices
+        original_h5_indices=original_h5_indices
+    )
+
+    # If test set is huge, might need to sample. Let's take a fixed number of samples.
+    num_samples_to_plot = min(len(plot_dataset), 9 * 10) # Enough for a few rows of 9 images, but only display 9
+    if len(plot_dataset) > num_samples_to_plot:
+        # Sample indices from the current plot_dataset's scope (which is already test_indices)
+        # We need to map these sampled indices back to the original `test_indices` list for the dataset.
+        sampled_relative_indices = np.random.choice(len(plot_dataset), num_samples_to_plot, replace=False)
+        
+        # Create a new dataset instance with the sampled test indices
+        plot_dataset = ParticleDatasetReg(
+            h5_path=h5_path,
+            labels=labels,
+            size_labels=size_labels,
+            mean=mean,
+            std=std,
+            class_to_idx=class_to_idx,
+            transform=None,
+            indices=np.array(test_indices)[sampled_relative_indices].tolist(), # Correctly map sampled indices back to actual test_indices list
+            original_h5_indices=original_h5_indices
+        )
+
+    # Create dataloader with a batch size equal to the number of samples to plot
+    plot_dataloader = DataLoader(
+        plot_dataset, batch_size=len(plot_dataset), shuffle=False
+    )
+
+    # Get predictions
+    model.eval()
+    with torch.no_grad():
+        batch_data = next(iter(plot_dataloader))
+        imgs = batch_data[0]  # (batch_size, channels, height, width)
+        ground_truth_sizes = batch_data[2]  # Ground truth sizes
+        
+        if imgs.numel() == 0: # Handle empty batch case
+            print("No test samples to plot.")
+            plt.close()
+            return
+
+        sizes = model(imgs.to(device)).cpu().squeeze()
+
+        # Find min, max indices and intermediate values based on predicted sizes for representative samples
+        intermediate_sizes_val, intermediate_indices_val = [], []
+        
+        if sizes.ndim == 0: # Handle case of single prediction
+            intermediate_sizes_val.append(sizes)
+            intermediate_indices_val.append(torch.tensor(0))
+        else:
+            # Ensure we pick distinct samples if possible by sorting and then picking evenly spaced
+            sorted_sizes, sorted_indices = torch.sort(sizes)
+            num_points = 9 # Target 9 images for a 3x3 grid
+            
+            if len(sorted_sizes) > 0:
+                indices_to_pick = np.linspace(0, len(sorted_sizes) - 1, num_points).astype(int)
+                
+                for idx_in_sorted in indices_to_pick:
+                    original_idx_in_batch = sorted_indices[idx_in_sorted]
+                    intermediate_sizes_val.append(sizes[original_idx_in_batch])
+                    intermediate_indices_val.append(original_idx_in_batch)
+            else: # No samples in batch
+                print("No samples found in batch for plotting.")
+                plt.close()
+                return
+
+        intermediate_indices = torch.tensor(
+            intermediate_indices_val, dtype=torch.int64
+        )
+        intermediate_sizes = intermediate_sizes_val
+
+        # Get images and resize them
+        resized_images = [
+            torch.nn.functional.interpolate(
+                imgs[idx][0:1].unsqueeze(0), # Take the first channel (assuming C=1 for grayscale)
+                size=(16, 32), # Target H, W for visualization
+                mode="bilinear",
+                align_corners=False,
+            ).squeeze(0)[0] # Remove batch dim and channel dim
+            for idx in intermediate_indices
+        ]
+
+        # Get corresponding ground truth sizes
+        gt_sizes = [ground_truth_sizes[idx] for idx in intermediate_indices]
+
+    # Create 3x3 subplot
+    fig, axes = plt.subplots(3, 3, figsize=(12, 9))
+
+    # Plot images (only plot up to 9, even if more intermediates were generated)
+    for i, (ax, img, pred_size, gt_size) in enumerate(zip(axes.flat, resized_images, intermediate_sizes, gt_sizes)):
+        if i >= 9: # Only plot first 9
+            break
+        ax.imshow(img.cpu().numpy(), cmap="gray") # Ensure it's numpy for imshow
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.title.set_text(f"pred: {pred_size.item():.1f} | gt: {gt_size.item():.1f}")
+
+    # Add a main title to distinguish from training/validation samples
+    fig.suptitle("Test Sample Images with Size Predictions", fontsize=16, y=0.98)
+
+    # Adjust layout and save
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(experiment_dir, "test_samples_size_predict.png"),
+        format="png",
+        dpi=300,
+    )
+    plt.close(fig)
+
+def plot_test_per_class_performance(
+    model, h5_path, labels, size_labels, mean, std, device, class_to_idx, experiment_dir, classes, test_indices, original_h5_indices
+):
+    """
+    Plot scatter plots of predictions vs ground truth for each class on test dataset for 3D data.
+    
+    Args:
+        model: Trained model
+        h5_path: Path to HDF5 file
+        labels: Pre-computed labels array (filtered and mapped)
+        size_labels: Pre-computed size labels array
+        mean: Normalization mean
+        std: Normalization std
+        device: Device to run inference on
+        class_to_idx: Dictionary for class mapping
+        experiment_dir: Directory to save the plot
+        classes: List of classes (original IDs) to include
+        test_indices: List of test indices (relative to labels/size_labels) to filter the dataset
+        original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
+    """
+    # Create a dataset for plotting with test indices
+    plot_dataset = ParticleDatasetReg(
+        h5_path=h5_path,
+        labels=labels,
+        size_labels=size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
+        transform=None,
+        indices=test_indices,  # Use test indices
+        original_h5_indices=original_h5_indices
+    )
+
+    # Create dataloader
+    plot_dataloader = DataLoader(
+        plot_dataset, batch_size=1024, shuffle=False # Use reasonable batch size
+    )
+
+    all_class_labels = []
+    all_gt_size_labels = []
+    all_predictions = []
+
+    model.eval()
+    with torch.no_grad():
+        for batch_images, batch_class_labels, batch_gt_size_labels in tqdm(plot_dataloader, desc="Generating per-class test performance data"):
+            predictions = model(batch_images.to(device)).cpu().numpy().flatten()
+            all_predictions.extend(predictions)
+            all_class_labels.extend(batch_class_labels.numpy())
+            all_gt_size_labels.extend(batch_gt_size_labels.numpy())
+    
+    all_predictions = np.array(all_predictions)
+    all_class_labels = np.array(all_class_labels)
+    all_gt_size_labels = np.array(all_gt_size_labels)
+
+    # Convert original class IDs to mapped class IDs for filtering
+    mapped_classes_to_plot = [class_to_idx[cls] for cls in classes]
+
+    # Create subplots for each class
+    fig, axes = plt.subplots(1, len(mapped_classes_to_plot), figsize=(5 * len(mapped_classes_to_plot), 5))
+    if len(mapped_classes_to_plot) == 1:
+        axes = [axes] # Ensure axes is iterable for single class
+
+    for i, mapped_cls_id in enumerate(mapped_classes_to_plot):
+        # Filter data for this class using the mapped labels
+        class_mask = all_class_labels == mapped_cls_id
+        class_gt = all_gt_size_labels[class_mask]
+        class_pred = all_predictions[class_mask]
+        
+        # Get original class ID for title
+        original_class_id = [k for k, v in class_to_idx.items() if v == mapped_cls_id][0] # Reverse lookup
+
+        if len(class_gt) == 0:
+            axes[i].set_title(f'Class {original_class_id} (Test)\nNo samples')
+            axes[i].set_xlabel(f'Ground Truth Size [nm]')
+            axes[i].set_ylabel(f'Predicted Size [nm]')
+            axes[i].grid(True, alpha=0.3)
+            continue
+
+        # Scatter plot
+        axes[i].scatter(class_gt, class_pred, alpha=0.6, s=10)
+        
+        # Perfect prediction line
+        min_val = min(class_gt.min(), class_pred.min()) if len(class_gt) > 0 else 0
+        max_val = max(class_gt.max(), class_pred.max()) if len(class_gt) > 0 else 1
+        axes[i].plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, label='Perfect prediction')
+        
+        # Calculate metrics
+        rmse = np.sqrt(np.mean((class_gt - class_pred) ** 2)) if len(class_gt) > 0 else np.nan
+        correlation = np.corrcoef(class_gt, class_pred)[0, 1] if len(class_gt) > 1 else np.nan
+        
+        axes[i].set_xlabel(f'Ground Truth Size [nm]')
+        axes[i].set_ylabel(f'Predicted Size [nm]')
+        axes[i].set_title(f'Class {original_class_id} (Test)\nRMSE: {rmse:.2f}, r: {correlation:.3f}')
+        axes[i].legend()
+        axes[i].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(experiment_dir, "per_class_performance_test.png"),
+        format="png",
+        dpi=300,
+    )
+    plt.close(fig)
+
+def calculate_test_metrics(model, h5_path, labels, size_labels, mean, std, device, class_to_idx, classes, test_indices, original_h5_indices):
+    """
+    Calculate comprehensive test metrics including class-wise accuracy and overall performance.
+    
+    Args:
+        model: Trained model
+        h5_path: Path to HDF5 file
+        labels: Pre-computed labels array (filtered and mapped)
+        size_labels: Pre-computed size labels array
+        mean: Normalization mean
+        std: Normalization std
+        device: Device to run inference on
+        class_to_idx: Dictionary for class mapping
+        classes: List of classes (original IDs) to include
+        test_indices: List of test indices (relative to labels/size_labels)
+        original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
+    
+    Returns:
+        dict: Dictionary containing test metrics
+    """
+    # Create test dataset
+    test_dataset = ParticleDatasetReg(
+        h5_path=h5_path,
+        labels=labels,
+        size_labels=size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
+        transform=None,
+        indices=test_indices,
+        original_h5_indices=original_h5_indices
+    )
+    
+    # Create dataloader
+    test_dataloader = DataLoader(test_dataset, batch_size=1024, shuffle=False)
+    
+    # Get predictions and ground truth
+    all_class_labels = []
+    all_gt_size_labels = []
+    all_predictions = []
+    
+    model.eval()
+    with torch.no_grad():
+        for batch_images, batch_class_labels, batch_gt_size_labels in tqdm(test_dataloader, desc="Calculating test metrics"):
+            predictions = model(batch_images.to(device)).cpu().numpy().flatten()
+            all_predictions.extend(predictions)
+            all_class_labels.extend(batch_class_labels.numpy())
+            all_gt_size_labels.extend(batch_gt_size_labels.numpy())
+    
+    all_predictions = np.array(all_predictions)
+    all_class_labels = np.array(all_class_labels)
+    all_gt_size_labels = np.array(all_gt_size_labels)
+    
+    # Calculate overall test metrics
+    overall_rmse = np.sqrt(np.mean((all_gt_size_labels - all_predictions) ** 2))
+    overall_mae = np.mean(np.abs(all_gt_size_labels - all_predictions))
+    overall_correlation = np.corrcoef(all_gt_size_labels, all_predictions)[0, 1] if len(all_gt_size_labels) > 1 else np.nan
+    
+    # Calculate size ranges for each class
+    class_size_ranges = {}
+    mapped_classes_to_analyze = [class_to_idx[cls] for cls in classes]
+    
+    for mapped_cls_id in mapped_classes_to_analyze:
+        # Get original class ID for reporting
+        original_class_id = [k for k, v in class_to_idx.items() if v == mapped_cls_id][0]
+        
+        # Filter ground truth sizes for this class
+        class_mask = all_class_labels == mapped_cls_id
+        class_gt_sizes = all_gt_size_labels[class_mask]
+        
+        if len(class_gt_sizes) > 0:
+            min_size = np.min(class_gt_sizes)
+            max_size = np.max(class_gt_sizes)
+            class_size_ranges[original_class_id] = {
+                'min_size': float(min_size),
+                'max_size': float(max_size),
+                'range': float(max_size - min_size)
+            }
+        else:
+            class_size_ranges[original_class_id] = {
+                'min_size': None,
+                'max_size': None,
+                'range': None
+            }
+    
+    # Calculate accuracy metrics for each class
+    class_test_metrics = {}
+    
+    for mapped_cls_id in mapped_classes_to_analyze:
+        # Get original class ID
+        original_class_id = [k for k, v in class_to_idx.items() if v == mapped_cls_id][0]
+        
+        # Filter data for this class
+        class_mask = all_class_labels == mapped_cls_id
+        class_predictions = all_predictions[class_mask]
+        class_gt_sizes = all_gt_size_labels[class_mask]
+        
+        if len(class_predictions) == 0:
+            class_test_metrics[original_class_id] = {
+                'total_samples': 0,
+                'correct_predictions': 0,
+                'wrong_predictions': 0,
+                'accuracy_percentage': 0.0,
+                'size_range': class_size_ranges[original_class_id],
+                'rmse': None,
+                'mae': None,
+                'correlation': None
+            }
+            continue
+        
+        # Calculate class-specific metrics
+        class_rmse = np.sqrt(np.mean((class_gt_sizes - class_predictions) ** 2))
+        class_mae = np.mean(np.abs(class_gt_sizes - class_predictions))
+        class_correlation = np.corrcoef(class_gt_sizes, class_predictions)[0, 1] if len(class_gt_sizes) > 1 else np.nan
+        
+        # Get size range for this class
+        if class_size_ranges[original_class_id]['min_size'] is not None:
+            min_size = class_size_ranges[original_class_id]['min_size']
+            max_size = class_size_ranges[original_class_id]['max_size']
+            
+            # Check which predictions fall within the correct range
+            correct_mask = (class_predictions >= min_size) & (class_predictions <= max_size)
+            correct_predictions = np.sum(correct_mask)
+            wrong_predictions = len(class_predictions) - correct_predictions
+            accuracy_percentage = (correct_predictions / len(class_predictions)) * 100
+            
+            class_test_metrics[original_class_id] = {
+                'total_samples': int(len(class_predictions)),
+                'correct_predictions': int(correct_predictions),
+                'wrong_predictions': int(wrong_predictions),
+                'accuracy_percentage': float(accuracy_percentage),
+                'size_range': class_size_ranges[original_class_id],
+                'mean_prediction': float(np.mean(class_predictions)),
+                'std_prediction': float(np.std(class_predictions)),
+                'rmse': float(class_rmse),
+                'mae': float(class_mae),
+                'correlation': float(class_correlation) if not np.isnan(class_correlation) else None
+            }
+        else:
+            class_test_metrics[original_class_id] = {
+                'total_samples': int(len(class_predictions)),
+                'correct_predictions': 0,
+                'wrong_predictions': int(len(class_predictions)),
+                'accuracy_percentage': 0.0,
+                'size_range': class_size_ranges[original_class_id],
+                'mean_prediction': float(np.mean(class_predictions)),
+                'std_prediction': float(np.std(class_predictions)),
+                'rmse': float(class_rmse),
+                'mae': float(class_mae),
+                'correlation': float(class_correlation) if not np.isnan(class_correlation) else None
+            }
+    
+    # Calculate overall accuracy across all classes
+    total_samples = sum([metrics['total_samples'] for metrics in class_test_metrics.values()])
+    total_correct = sum([metrics['correct_predictions'] for metrics in class_test_metrics.values()])
+    overall_accuracy = (total_correct / total_samples * 100) if total_samples > 0 else 0.0
+    
+    return {
+        'test_class_wise_metrics': class_test_metrics,
+        'test_overall_metrics': {
+            'total_samples': total_samples,
+            'total_correct': total_correct,
+            'total_wrong': total_samples - total_correct,
+            'overall_accuracy_percentage': overall_accuracy,
+            'overall_rmse': float(overall_rmse),
+            'overall_mae': float(overall_mae),
+            'overall_correlation': float(overall_correlation) if not np.isnan(overall_correlation) else None
+        }
+    }
+
+def print_test_metrics(test_metrics):
+    """
+    Print the test metrics in a readable format.
+    Args:
+        test_metrics (dict): Dictionary containing test metrics.
+    """
+    print("\nTest Results Summary:")
+    print("-" * 50)
+    print(f"Overall Test RMSE: {test_metrics['test_overall_metrics']['overall_rmse']:.2f}")
+    print(f"Overall Test MAE: {test_metrics['test_overall_metrics']['overall_mae']:.2f}")
+    print(f"Overall Test Correlation: {test_metrics['test_overall_metrics']['overall_correlation']:.3f}")
+    print(f"Overall Test Accuracy: {test_metrics['test_overall_metrics']['overall_accuracy_percentage']:.2f}%")
+    print(f"Total Test Samples: {test_metrics['test_overall_metrics']['total_samples']}")
+    print()
+    
+    for class_id, metrics_data in test_metrics['test_class_wise_metrics'].items():
+        print(f"Class {class_id} Test Results:")
+        print(f"  Total samples: {metrics_data['total_samples']}")
+        print(f"  RMSE: {metrics_data['rmse']:.2f}" if metrics_data['rmse'] is not None else "  RMSE: N/A")
+        print(f"  MAE: {metrics_data['mae']:.2f}" if metrics_data['mae'] is not None else "  MAE: N/A")
+        print(f"  Correlation: {metrics_data['correlation']:.3f}" if metrics_data['correlation'] is not None else "  Correlation: N/A")
+        print(f"  Accuracy: {metrics_data['accuracy_percentage']:.2f}%")
+        print()
 
 def main(args):
     # Load configuration
@@ -1074,7 +1464,7 @@ def main(args):
     set_random_seed(config["seed"])
 
     # Set up experiment directory and tensorboard writer
-    experiment_folder_name = f"ResNet18_Regression_3D_{getdatetime()}" # Added _3D
+    experiment_folder_name = f"ResNet18_Regression_zxy_{getdatetime()}" # Added _3D
     experiment_folder_name = experiment_folder_name[
         :100
     ]  # Limit folder name length
@@ -1104,11 +1494,18 @@ def main(args):
     # Extract class labels for stratified split (use the mapped labels)
     class_labels_for_split = all_mapped_labels.tolist()
 
-    # Stratified split - indices are relative to the filtered dataset (all_mapped_labels, etc.)
-    splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=config["seed"])
-    train_idx, val_idx = next(splitter.split(np.zeros(len(class_labels_for_split)), class_labels_for_split))
-    
-    print(f"Train samples: {len(train_idx)}, Validation samples: {len(val_idx)}")
+    # First split: Train + Val (80%) vs Test (20%)
+    splitter_train_val_test = StratifiedShuffleSplit(n_splits=1, test_size=0.1, random_state=config["seed"])
+    train_val_idx, test_idx = next(splitter_train_val_test.split(np.zeros(len(class_labels_for_split)), class_labels_for_split))
+
+    # Second split: Train (64% overall) vs Val (16% overall) 
+    train_val_labels = [class_labels_for_split[i] for i in train_val_idx]
+    splitter_train_val = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=config["seed"])
+    train_relative_idx, val_relative_idx = next(splitter_train_val.split(np.zeros(len(train_val_labels)), train_val_labels))
+
+    # Convert relative indices back to absolute indices
+    train_idx = train_val_idx[train_relative_idx]
+    val_idx = train_val_idx[val_relative_idx]
 
     # Define augmentation
     augmentation = v2.Compose(
@@ -1172,9 +1569,7 @@ def main(args):
         "final_val_loss": loss_log[-1] if loss_log else None,
         "num_epochs_trained": len(loss_log),
     }
-    save_metrics_to_json(
-        metrics_dict=metrics,
-        output_folder=experiment_dir,
+    val_metrics = calculate_val_metrics(
         model=model,
         h5_path=config["data"]["dataset_path"],
         labels=all_mapped_labels,
@@ -1187,7 +1582,27 @@ def main(args):
         val_indices=val_idx.tolist(),
         original_h5_indices=all_original_h5_indices
     )
+    test_metrics = calculate_test_metrics(
+        model=model,
+        h5_path=config["data"]["dataset_path"],
+        labels=all_mapped_labels,
+        size_labels=all_size_labels,
+        mean=mean,
+        std=std,
+        device=device,
+        class_to_idx=class_to_idx,
+        classes=config["data"]["classes"],
+        test_indices=test_idx.tolist(),
+        original_h5_indices=all_original_h5_indices
+    )
+    metrics["val_metrics"] = val_metrics
+    metrics["test_metrics"] = test_metrics
 
+    save_metrics_to_json(
+        metrics_dict=metrics,
+        output_folder=experiment_dir,
+    )
+    print_test_metrics(test_metrics)
     # Plot loss and distribution comparison
     plot_loss_and_distribution( 
         model=model,
@@ -1261,6 +1676,35 @@ def main(args):
         device=device,
         experiment_dir=experiment_dir,
         val_indices=val_idx.tolist(),
+        original_h5_indices=all_original_h5_indices
+    )
+    plot_test_per_class_performance(
+        model=model,
+        h5_path=config["data"]["dataset_path"],
+        labels=all_mapped_labels,
+        size_labels=all_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
+        device=device,
+        experiment_dir=experiment_dir,
+        classes=config["data"]["classes"],
+        test_indices=test_idx.tolist(),
+        original_h5_indices=all_original_h5_indices
+    )
+    
+    # Plot test sample images
+    plot_test_sample_images(
+        model=model,
+        h5_path=config["data"]["dataset_path"],
+        labels=all_mapped_labels,
+        size_labels=all_size_labels,
+        mean=mean,
+        std=std,
+        class_to_idx=class_to_idx,
+        device=device,
+        experiment_dir=experiment_dir,
+        test_indices=test_idx.tolist(),
         original_h5_indices=all_original_h5_indices
     )
     print(f"Training completed. Model and plots saved to {experiment_dir}")
