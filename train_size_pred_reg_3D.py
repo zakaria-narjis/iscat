@@ -1168,8 +1168,8 @@ def main(args):
 
     # Save metrics
     metrics = {
-        "mse_history": loss_log,
-        "final_mse": loss_log[-1] if loss_log else None,
+        "val_loss_history": loss_log,
+        "final_val_loss": loss_log[-1] if loss_log else None,
         "num_epochs_trained": len(loss_log),
     }
     save_metrics_to_json(

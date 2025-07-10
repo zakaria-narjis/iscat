@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.nn import SmoothL1Loss, L1Loss, MSELoss, HuberLoss
+from torch.nn import L1Loss, MSELoss, HuberLoss
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -26,7 +26,7 @@ class ParticleSizeTrainer(nn.Module):
         self.experiment_dir = experiment_dir
         self.writer = writer
         self.verbose = verbose
-        self.training_noise_std = config.get("training_noise_std", 0.0)
+        self.training_noise_std = config["training_noise_std"]
         # Initialize optimizer
         self.optimizer = optim.Adam(
             model.parameters(), lr=self.config["optimizer"]["parameters"]["lr"]
@@ -43,11 +43,9 @@ class ParticleSizeTrainer(nn.Module):
         
         # Loss function
         if config["loss"]["type"] == "L1":
-            self.criterion = nn.L1Loss(**config["loss"]["parameters"])
+            self.criterion = L1Loss(**config["loss"]["parameters"])
         elif config["loss"]["type"] == "MSE":
-            self.criterion = nn.MSELoss(**config["loss"]["parameters"])
-        elif config["loss"]["type"] == "SmoothL1":
-            self.criterion = SmoothL1Loss(**config["loss"]["parameters"])
+            self.criterion = MSELoss(**config["loss"]["parameters"])
         elif config["loss"]["type"] == "Huber":
             self.criterion = HuberLoss(**config["loss"]["parameters"])
         elif config["loss"]["type"] == "RMSE":
@@ -76,7 +74,7 @@ class ParticleSizeTrainer(nn.Module):
             train_dataloader (DataLoader): Training dataloader
             
         Returns:
-            tuple: (total_mse, per_class_mse_dict)
+            tuple: (total_error, per_class_error_dict)
         """
         total_loss = 0
         total_samples = 0
@@ -120,44 +118,50 @@ class ParticleSizeTrainer(nn.Module):
                     class_losses[cls] += class_loss.item() * class_mask.sum().item()
                     class_counts[cls] += class_mask.sum().item()
         
-        # Calculate average losses and convert to mse
-        avg_mse = total_loss / total_samples
+        # Calculate average losses and convert to error
+        avg_loss = total_loss / total_samples
         
-        # Calculate per-class mse
-        per_class_mse = {}
+        # Calculate per-class error
+        per_class_error = {}
         for cls in self.classes:
             if class_counts[cls] > 0:
-                class_mse = class_losses[cls] / class_counts[cls]
-                per_class_mse[cls] = class_mse
+                class_error = class_losses[cls] / class_counts[cls]
+                per_class_error[cls] = class_error
             else:
-                per_class_mse[cls] = 0.0
+                per_class_error[cls] = 0.0
         
-        return avg_mse, per_class_mse
+        return avg_loss, per_class_error
     
     def train(self, train_dataloader, val_dataloader, num_epochs):
-        best_val_mse = float("inf")
+        best_val_error = float("inf")
         no_improve = 0
         loss_log = []
 
         for epoch in tqdm(range(num_epochs), disable=not self.logger.isEnabledFor(logging.DEBUG)):
-            train_mse, per_class_mse = self.train_epoch(train_dataloader)
-            val_mse = self.validate_epoch(val_dataloader)
-            loss_log.append(val_mse)
-            self.scheduler.step(val_mse)
+            train_error, per_class_error = self.train_epoch(train_dataloader)
+            val_error = self.validate_epoch(val_dataloader)
+            loss_log.append(val_error)
+            self.scheduler.step(val_error)
 
-            self.logger.info(f"Epoch [{epoch+1}/{num_epochs}], Train MSE: {train_mse:.4f}, Val MSE: {val_mse:.4f}, Patience: {no_improve}/{self.config['early_stopping']['patience']}")
+            self.logger.info(
+                        f"Epoch [{epoch+1}/{num_epochs}], "
+                        f"Train {self.config['loss']['type']} error: {train_error:.4f}, "
+                        f"Val {self.config['loss']['type']} error: {val_error:.4f}, "
+                        f"Patience: {no_improve}/{self.config['early_stopping']['patience']}"
+                    )
+
             
             if self.writer:
-                self.writer.add_scalar("MSE/Train", train_mse, epoch)
-                self.writer.add_scalar("MSE/Validation", val_mse, epoch)
+                self.writer.add_scalar("MSE/Train", train_error, epoch)
+                self.writer.add_scalar("MSE/Validation", val_error, epoch)
 
-            if val_mse < best_val_mse:
-                best_val_mse = val_mse
+            if val_error < best_val_error:
+                best_val_error = val_error
                 torch.save({
                     "epoch": epoch,
                     "model_state_dict": self.model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
-                    "mse": best_val_mse,
+                    f"val {self.config['loss']['type']} error": best_val_error,
                 }, self.checkpoint_path)
                 no_improve = 0
             else:
@@ -203,7 +207,7 @@ class ParticleSizeTrainer(nn.Module):
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.scheduler.state_dict(),
-                "mse": loss,
+                "error": loss,
             },
             filepath,
         )
