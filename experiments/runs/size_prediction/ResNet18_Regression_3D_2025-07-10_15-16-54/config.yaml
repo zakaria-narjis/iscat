@@ -3,13 +3,14 @@ data:
   - 0
   - 1
   dataset_path: /home/zakarianarjis/Downloads/particles_3d_mf.hdf5
-  mean: null
   num_workers: 12
-  padding: false
-  std: null
 logging:
   tensorboard:
     log_dir: experiments/runs/size_prediction
+model:
+  parameters:
+    dropout: 0.5
+  type: ResNet18
 seed: 0
 training:
   batch_size: 32
@@ -21,15 +22,13 @@ training:
     enabled: true
     patience: 20
   loss:
-    knn_divergence:
-      weight: 0.8
-    monotonicity:
-      weight: 1
+    parameters: {}
+    type: RMSE
   num_epochs: 600
   optimizer:
     parameters:
       lr: 0.0001
-      weight_decay: 0.05
+      weight_decay: 0.0005
     type: Adam
   scheduler:
     parameters:
@@ -37,11 +36,3 @@ training:
       mode: min
       patience: 8
     type: ReduceLROnPlateau
-  target_distribution:
-    cycle: 5
-    k: 3000
-    max_value: null
-    mean: 76
-    min_value: 10.0
-    num_points: 30000
-    std: 22.5

@@ -1,0 +1,36 @@
+seed: 0
+data:
+  classes: [0,1]  # Classes to include in training
+  dataset_path: "/home/zakarianarjis/Downloads/particles_3d_mf.hdf5" #particles_3d_mf.hdf5 brightfield_particles.hdf5
+  num_workers: 12
+training:
+  batch_size: 32 #16000
+  num_epochs: 600
+  device: "cuda:0"
+  optimizer:
+    type: "Adam"
+    parameters:
+      lr: 1e-4 #5e-2
+      weight_decay: 5e-4 #5e-2
+  scheduler:
+    type: "ReduceLROnPlateau"
+    parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 8
+  early_stopping:
+    enabled: true
+    patience: 20
+  loss:
+    type: "RMSE"  # Options: L1, MSE, SmoothL1, Huber, RMSE
+    parameters: {
+
+    }
+  classes: ${data.classes}  # Classes to include in training
+model:
+  type: "ResNet18" 
+  parameters:
+    dropout: 0.5
+logging:
+  tensorboard:
+    log_dir: "experiments/runs/size_prediction"

@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class ResNet18(nn.Module):
-    def __init__(self, num_classes=1,in_channels=1):
+    def __init__(self, num_classes=1,in_channels=1,dropout_rate=0.5):
         super(ResNet18, self).__init__()
         self.resnet = torch.hub.load(
             "pytorch/vision:v0.10.0", "resnet18", weights=None
@@ -18,8 +18,11 @@ class ResNet18(nn.Module):
         #     nn.Linear(self.resnet.fc.in_features, num_classes)
         # )
         self.size_head = nn.Linear(self.resnet.fc.in_features, num_classes)
+        self.dropout = nn.Dropout(p=dropout_rate)
         self.resnet.fc = nn.Identity() 
     def forward(self, x):
         features = self.resnet(x)
+        features = self.dropout(features)
         size_output = self.size_head(features)       
         return size_output
+

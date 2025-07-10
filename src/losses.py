@@ -1,6 +1,16 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+
+
+class RMSELoss(nn.Module):
+    def __init__(self, reduction='mean'):
+        super().__init__()
+        self.mse = nn.MSELoss(reduction=reduction)
+
+    def forward(self, input, target):
+        return torch.sqrt(self.mse(input, target))
+
 class MMDLoss(nn.Module):
     """
     Maximum Mean Discrepancy (MMD) Loss for PyTorch.

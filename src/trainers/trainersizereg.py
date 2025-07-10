@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
+from torch.nn import SmoothL1Loss, L1Loss, MSELoss, HuberLoss
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import logging
 import os
 from tqdm import tqdm
-from src.losses import MMDLoss, KNNDivergenceLoss
-import math
+from src.losses import RMSELoss
 
 class ParticleSizeTrainer(nn.Module):
     def __init__(
@@ -41,10 +41,20 @@ class ParticleSizeTrainer(nn.Module):
             patience=self.config["scheduler"]["parameters"]["patience"],
         )
         
-        # Loss function (mse)
-        self.criterion = nn.MSELoss()
-        # self.criterion = KNNDivergenceLoss(k_neighbors=int(math.sqrt(config["batch_size"])))
-        # self.criterion = MMDLoss()
+        # Loss function
+        if config["loss"]["type"] == "L1":
+            self.criterion = nn.L1Loss(**config["loss"]["parameters"])
+        elif config["loss"]["type"] == "MSE":
+            self.criterion = nn.MSELoss(**config["loss"]["parameters"])
+        elif config["loss"]["type"] == "SmoothL1":
+            self.criterion = SmoothL1Loss(**config["loss"]["parameters"])
+        elif config["loss"]["type"] == "Huber":
+            self.criterion = HuberLoss(**config["loss"]["parameters"])
+        elif config["loss"]["type"] == "RMSE":
+            self.criterion = RMSELoss(**config["loss"]["parameters"])
+        else:
+            raise ValueError(f"Unsupported loss type: {config['loss']['type']}")
+        
         # Checkpoint path
         self.checkpoint_path = os.path.join(experiment_dir, "best_model.pth")
         
@@ -135,7 +145,7 @@ class ParticleSizeTrainer(nn.Module):
             loss_log.append(val_mse)
             self.scheduler.step(val_mse)
 
-            self.logger.info(f"Epoch [{epoch+1}/{num_epochs}], Train MSE: {train_mse:.4f}, Val MSE: {val_mse:.4f}")
+            self.logger.info(f"Epoch [{epoch+1}/{num_epochs}], Train MSE: {train_mse:.4f}, Val MSE: {val_mse:.4f}, Patience: {no_improve}/{self.config['early_stopping']['patience']}")
             
             if self.writer:
                 self.writer.add_scalar("MSE/Train", train_mse, epoch)

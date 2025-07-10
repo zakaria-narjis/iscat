@@ -140,7 +140,7 @@ def assign_p_by_contrast(contrast_scores, labels, sizes):
 
     return P_assigned
 
-def generate_global_size_labels(h5_path, classes, mean=None, std=None):
+def generate_global_size_labels(h5_path, classes):
     """
     Generate size labels for the entire dataset (all classes).
     This should be called once and the results shared between train/val datasets.
@@ -166,9 +166,8 @@ def generate_global_size_labels(h5_path, classes, mean=None, std=None):
     # Map original labels to new consecutive indices
     mapped_labels = np.array([class_to_idx[label] for label in filtered_labels])
     
-    # Get normalization stats if not provided
-    if mean is None or std is None:
-        mean, std = compute_normalization_stats(h5_path, classes)
+    # Get normalization stats 
+    mean, std = compute_normalization_stats(h5_path, classes)
     
     # Compute contrast scores for all data
     print("Computing contrast scores...")
@@ -206,11 +205,9 @@ class ParticleDatasetReg(Dataset):
         transform=None,
         mean=None,
         std=None,
-        padding=False,
         indices=None, # These are indices into the filtered labels/size_labels (e.g., train_idx or val_idx)
         original_h5_indices=None # The true indices in the HDF5 file corresponding to 'labels' and 'size_labels'
     ):
-        self.padding = padding
         self.transform = transform
         
         self.class_to_idx = class_to_idx
