@@ -7,6 +7,7 @@ training:
   batch_size: 32 #16000
   num_epochs: 600
   device: "cuda:0"
+  training_noise_std: 2.0 #0.1
   optimizer:
     type: "Adam"
     parameters:
@@ -22,7 +23,7 @@ training:
     enabled: true
     patience: 20
   loss:
-    type: "RMSE"  # Options: L1, MSE, SmoothL1, Huber, RMSE
+    type: "L1"  # Options: L1, MSE, Huber, RMSE
     parameters: {
 
     }

@@ -23,7 +23,7 @@ training:
     patience: 20
   loss:
     parameters: {}
-    type: RMSE
+    type: L1
   num_epochs: 600
   optimizer:
     parameters:
@@ -36,3 +36,4 @@ training:
       mode: min
       patience: 8
     type: ReduceLROnPlateau
+  training_noise_std: 2.0
