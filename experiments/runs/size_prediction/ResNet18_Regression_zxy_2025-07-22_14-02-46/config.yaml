@@ -1,0 +1,40 @@
+data:
+  classes:
+  - 0
+  - 1
+  dataset_path: /home/zakarianarjis/Downloads/particles_3d_mf.hdf5
+  num_workers: 12
+  z_depth: 150
+logging:
+  tensorboard:
+    log_dir: experiments/runs/size_prediction
+model:
+  parameters:
+    dropout: 0.5
+  type: ResNet18
+seed: 0
+training:
+  batch_size: 32
+  classes:
+  - 0
+  - 1
+  device: cuda:0
+  early_stopping:
+    enabled: true
+    patience: 20
+  loss:
+    parameters: {}
+    type: L1
+  num_epochs: 600
+  optimizer:
+    parameters:
+      lr: 0.0001
+      weight_decay: 0.0005
+    type: Adam
+  scheduler:
+    parameters:
+      factor: 0.5
+      mode: min
+      patience: 8
+    type: ReduceLROnPlateau
+  training_noise_std: 2.0

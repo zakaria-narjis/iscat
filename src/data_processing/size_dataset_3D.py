@@ -206,10 +206,11 @@ class ParticleDatasetReg(Dataset):
         mean=None,
         std=None,
         indices=None, # These are indices into the filtered labels/size_labels (e.g., train_idx or val_idx)
-        original_h5_indices=None # The true indices in the HDF5 file corresponding to 'labels' and 'size_labels'
+        original_h5_indices=None, # The true indices in the HDF5 file corresponding to 'labels' and 'size_labels'
+        z_depth=201
     ):
         self.transform = transform
-        
+        self.z_depth = z_depth
         self.class_to_idx = class_to_idx
         self.num_classes = len(class_to_idx)
         self.mean = mean
@@ -242,7 +243,7 @@ class ParticleDatasetReg(Dataset):
         h5_idx = self._all_original_h5_indices[global_idx]
         
         # Get particle data using the true HDF5 index
-        particle = self.images_ds[h5_idx]  # Shape: (201, 16, 16)
+        particle = self.images_ds[h5_idx][:self.z_depth,:,:]  # Shape: (z_depth, H, W)
         particle = (particle - self.mean) / self.std
 
         # Convert to torch tensor for better interpolation

@@ -24,7 +24,7 @@ from tqdm import tqdm
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
-def calculate_val_metrics(model, h5_path, labels, size_labels, mean, std, device, class_to_idx, classes, val_indices, original_h5_indices):
+def calculate_val_metrics(model, h5_path, labels,z_depth, size_labels, mean, std, device, class_to_idx, classes, val_indices, original_h5_indices):
     """
     Calculate accuracy metrics for each class based on size prediction ranges.
     
@@ -45,7 +45,7 @@ def calculate_val_metrics(model, h5_path, labels, size_labels, mean, std, device
         dict: Dictionary containing class-wise accuracy metrics
     """
     # Create validation dataset
-    val_dataset = ParticleDatasetReg(
+    val_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -351,7 +351,7 @@ def write_config_to_tensorboard(writer, config):
         writer.add_text(f"Configuration/{section}", "\n".join(table_rows))
 
 def plot_prediction_monotonicity(
-    model, h5_path, labels, size_labels, contrasts, mean, std, device, experiment_dir, class_to_idx, original_h5_indices, num_samples=1000, plot_indices=None
+    model, h5_path, labels,z_depth, size_labels, contrasts, mean, std, device, experiment_dir, class_to_idx, original_h5_indices, num_samples=1000, plot_indices=None
 ):
     """
     Plot prediction vs contrast to analyze monotonicity for 3D data, separated by class.
@@ -386,7 +386,7 @@ def plot_prediction_monotonicity(
              sample_indices = np.random.choice(sample_indices, num_samples, replace=False)
 
     # Create a dataset for plotting using pre-computed data and HDF5 path
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels, # Pass full precomputed labels
         size_labels=size_labels, # Pass full precomputed size labels
@@ -557,7 +557,7 @@ def plot_prediction_monotonicity(
     print(f"- Combined plot: prediction_monotonicity_combined.png")
 
 def plot_loss_and_distribution(
-    model, h5_path, labels, size_labels, mean, std, device, loss_log, experiment_dir, class_to_idx, original_h5_indices
+    model, h5_path,z_depth, labels, size_labels, mean, std, device, loss_log, experiment_dir, class_to_idx, original_h5_indices
 ):
     """
     Plot training loss history and compare ground truth vs predicted size distribution for 3D data.
@@ -576,7 +576,7 @@ def plot_loss_and_distribution(
         original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
     """
     # Create a dataset for plotting using pre-computed data and HDF5 path
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -654,7 +654,7 @@ def plot_loss_and_distribution(
     plt.close(fig)
 
 def plot_validation_sample_images(
-    model, h5_path, labels, size_labels, mean, std, class_to_idx, device, experiment_dir, val_indices, original_h5_indices
+    model, h5_path, labels,z_depth, size_labels, mean, std, class_to_idx, device, experiment_dir, val_indices, original_h5_indices
 ):
     """
     Plot a grid of sample images from validation set with their predicted sizes for 3D data.
@@ -673,7 +673,7 @@ def plot_validation_sample_images(
         original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
     """
     # Create a dataset for plotting using only validation indices
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -693,7 +693,7 @@ def plot_validation_sample_images(
         sampled_relative_indices = np.random.choice(len(plot_dataset), num_samples_to_plot, replace=False)
         
         # Create a new dataset instance with the sampled validation indices
-        plot_dataset = ParticleDatasetReg(
+        plot_dataset = ParticleDatasetReg(z_depth=z_depth,
             h5_path=h5_path,
             labels=labels,
             size_labels=size_labels,
@@ -792,7 +792,7 @@ def plot_validation_sample_images(
 
 
 def plot_sample_images(
-    model, h5_path, labels, size_labels, mean, std, device, class_to_idx, experiment_dir, original_h5_indices
+    model, h5_path, labels,z_depth, size_labels, mean, std, device, class_to_idx, experiment_dir, original_h5_indices
 ):
     """
     Plot a grid of sample images with their predicted sizes for 3D data.
@@ -810,7 +810,7 @@ def plot_sample_images(
         original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
     """
     # Create a dataset for plotting using pre-computed data and HDF5 path
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -825,7 +825,7 @@ def plot_sample_images(
     num_samples_to_plot = min(len(plot_dataset), 9 * 10) # A reasonable number to sample from total
     if len(plot_dataset) > num_samples_to_plot:
         sample_indices_for_plot = np.random.choice(len(plot_dataset), num_samples_to_plot, replace=False)
-        plot_dataset = ParticleDatasetReg(
+        plot_dataset = ParticleDatasetReg(z_depth=z_depth,
             h5_path=h5_path,
             labels=labels,
             size_labels=size_labels,
@@ -920,7 +920,7 @@ def plot_sample_images(
 
 
 def plot_per_class_performance(
-    model, h5_path, labels, size_labels, mean, std, device, class_to_idx, experiment_dir, classes, val_indices, original_h5_indices
+    model, h5_path, labels,z_depth, size_labels, mean, std, device, class_to_idx, experiment_dir, classes, val_indices, original_h5_indices
 ):
     """
     Plot scatter plots of predictions vs ground truth for each class on validation dataset for 3D data.
@@ -940,7 +940,7 @@ def plot_per_class_performance(
         original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
     """
     # Create a dataset for plotting with validation indices
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -1024,7 +1024,7 @@ def plot_per_class_performance(
     plt.close(fig)
 
 def plot_test_sample_images(
-    model, h5_path, labels, size_labels, mean, std, class_to_idx, device, experiment_dir, test_indices, original_h5_indices
+    model, h5_path, labels, z_depth,size_labels, mean, std, class_to_idx, device, experiment_dir, test_indices, original_h5_indices
 ):
     """
     Plot a grid of sample images from test set with their predicted sizes for 3D data.
@@ -1043,7 +1043,7 @@ def plot_test_sample_images(
         original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
     """
     # Create a dataset for plotting using only test indices
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -1063,7 +1063,7 @@ def plot_test_sample_images(
         sampled_relative_indices = np.random.choice(len(plot_dataset), num_samples_to_plot, replace=False)
         
         # Create a new dataset instance with the sampled test indices
-        plot_dataset = ParticleDatasetReg(
+        plot_dataset = ParticleDatasetReg(z_depth=z_depth,
             h5_path=h5_path,
             labels=labels,
             size_labels=size_labels,
@@ -1161,7 +1161,7 @@ def plot_test_sample_images(
     plt.close(fig)
 
 def plot_test_per_class_performance(
-    model, h5_path, labels, size_labels, mean, std, device, class_to_idx, experiment_dir, classes, test_indices, original_h5_indices
+    model, h5_path, labels,z_depth, size_labels, mean, std, device, class_to_idx, experiment_dir, classes, test_indices, original_h5_indices
 ):
     """
     Plot scatter plots of predictions vs ground truth for each class on test dataset for 3D data.
@@ -1181,7 +1181,7 @@ def plot_test_per_class_performance(
         original_h5_indices: Array of original HDF5 indices corresponding to labels/size_labels
     """
     # Create a dataset for plotting with test indices
-    plot_dataset = ParticleDatasetReg(
+    plot_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -1264,7 +1264,7 @@ def plot_test_per_class_performance(
     )
     plt.close(fig)
 
-def calculate_test_metrics(model, h5_path, labels, size_labels, mean, std, device, class_to_idx, classes, test_indices, original_h5_indices):
+def calculate_test_metrics(model, h5_path, labels,z_depth, size_labels, mean, std, device, class_to_idx, classes, test_indices, original_h5_indices):
     """
     Calculate comprehensive test metrics including class-wise accuracy and overall performance.
     
@@ -1285,7 +1285,7 @@ def calculate_test_metrics(model, h5_path, labels, size_labels, mean, std, devic
         dict: Dictionary containing test metrics
     """
     # Create test dataset
-    test_dataset = ParticleDatasetReg(
+    test_dataset = ParticleDatasetReg(z_depth=z_depth,
         h5_path=h5_path,
         labels=labels,
         size_labels=size_labels,
@@ -1516,7 +1516,7 @@ def main(args):
     )
 
     # Create datasets using pre-computed global labels/size_labels and HDF5 path for data access
-    train_dataset = ParticleDatasetReg(
+    train_dataset = ParticleDatasetReg(z_depth=config["data"].get("z_depth",201),
         h5_path=config["data"]["dataset_path"],
         labels=all_mapped_labels,
         size_labels=all_size_labels,
@@ -1528,7 +1528,7 @@ def main(args):
         original_h5_indices=all_original_h5_indices # The actual HDF5 indices
     )
 
-    val_dataset = ParticleDatasetReg(
+    val_dataset = ParticleDatasetReg(z_depth=config["data"].get("z_depth",201),
         h5_path=config["data"]["dataset_path"],
         labels=all_mapped_labels,
         size_labels=all_size_labels,
@@ -1545,6 +1545,7 @@ def main(args):
 
     # Initialize model
     in_channels = train_dataset[0][0].shape[0]  # Get number of channels from the first sample
+    print(f"Input channels: {in_channels}")
     model = ResNet18(num_classes=1, 
                      in_channels=in_channels, 
                      dropout_rate=config["model"]["parameters"]["dropout"])  # For regression, output is a single value
@@ -1572,6 +1573,7 @@ def main(args):
     val_metrics = calculate_val_metrics(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1585,6 +1587,7 @@ def main(args):
     test_metrics = calculate_test_metrics(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1607,6 +1610,7 @@ def main(args):
     plot_loss_and_distribution( 
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1622,6 +1626,7 @@ def main(args):
     plot_sample_images(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1636,6 +1641,7 @@ def main(args):
     plot_prediction_monotonicity(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         contrasts=all_filtered_contrast_scores, 
@@ -1652,6 +1658,7 @@ def main(args):
     plot_per_class_performance(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1668,6 +1675,7 @@ def main(args):
     plot_validation_sample_images(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1681,6 +1689,7 @@ def main(args):
     plot_test_per_class_performance(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
@@ -1697,6 +1706,7 @@ def main(args):
     plot_test_sample_images(
         model=model,
         h5_path=config["data"]["dataset_path"],
+        z_depth=config["data"].get("z_depth",201),
         labels=all_mapped_labels,
         size_labels=all_size_labels,
         mean=mean,
