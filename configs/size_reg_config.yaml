@@ -1,7 +1,7 @@
 seed: 0
 data:
   classes: [0,1]  # Classes to include in training
-  dataset_path: "/home/zakarianarjis/Downloads/particles_3d_mf.hdf5" #particles_3d_mf.hdf5 brightfield_particles.hdf5
+  dataset_path: "/home/zakarianarjis/Downloads/brightfield_particles.hdf5" #particles_3d_mf.hdf5 brightfield_particles.hdf5
   num_workers: 12
 training:
   batch_size: 32 #16000

@@ -201,7 +201,7 @@ def assign_p_by_contrast(data, Cls, sizes):
     return P_assigned
 
 
-def generate_global_size_labels(h5_path, classes, mean=None, std=None):
+def generate_global_size_labels(h5_path, classes):
     """
     Generate size labels for the entire dataset (all classes).
     This should be called once and the results shared between train/val datasets.
@@ -209,9 +209,7 @@ def generate_global_size_labels(h5_path, classes, mean=None, std=None):
     Args:
         h5_path (str): Path to HDF5 file
         classes (list): List of classes to include
-        mean (float, optional): Normalization mean
-        std (float, optional): Normalization std
-    
+  
     Returns:
         tuple: (data, labels, size_labels, class_to_idx)
     """
@@ -219,7 +217,6 @@ def generate_global_size_labels(h5_path, classes, mean=None, std=None):
         mask = np.isin(h5_file["labels"], classes)
         data = h5_file["data"][mask][:]
         labels = h5_file["labels"][mask][:]
-
     # Create class mapping to handle non-consecutive class indices
     class_to_idx = {c: i for i, c in enumerate(classes)}
     
@@ -227,8 +224,7 @@ def generate_global_size_labels(h5_path, classes, mean=None, std=None):
     mapped_labels = np.array([class_to_idx[label] for label in labels])
     
     # Get normalization stats if not provided
-    if mean is None or std is None:
-        mean, std = compute_normalization_stats(h5_path, classes)
+    mean, std = compute_normalization_stats(h5_path, classes)
     
     # Generate size labels based on particle statistics
     particles_stats = {0:(80, 22.5,10,float("inf")),
@@ -259,7 +255,6 @@ class ParticleDatasetReg(Dataset):
         transform=None,
         mean=None,
         std=None,
-        padding=False,
         indices=None,
         # New parameters for pre-computed data
         data=None,
@@ -267,7 +262,6 @@ class ParticleDatasetReg(Dataset):
         size_labels=None,
         class_to_idx=None,
     ):
-        self.padding = padding
         self.transform = transform
         
         # If pre-computed data is provided, use it directly
