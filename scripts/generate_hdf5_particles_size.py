@@ -212,12 +212,12 @@ def process_dataset(
 
                         if use_radial:
                             center = (
-                                (bbox[1] - bbox[0]) // 2,
-                                (bbox[3] - bbox[2]) // 2,
+                                region.shape[2] // 2,  # x-center
+                                region.shape[1] // 2   # y-center
                             )
                             axes = (
-                                (bbox[1] - bbox[0]) // 2,
-                                (bbox[3] - bbox[2]) // 2,
+                                region.shape[2] // 2,  # x-radius
+                                region.shape[1] // 2   # y-radius
                             )
                             processed = radial_average(
                                 region, center, axes, target_size
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_path",
         type=str,
-        default="dataset",
+        required=True,
         help="Folder Path for the output HDF5 file.",
     )
     parser.add_argument(
@@ -285,12 +285,8 @@ if __name__ == "__main__":
         default=16,
         help="Target size for first dimension",
     )
-    parser.add_argument(
-        "--use_radial",
-        type=bool,
-        default=False,
-        help="Use radial averaging instead of axis averaging",
-    )
+    parser.add_argument('--use_radial', action='store_true', help='...')
+
 
     args = parser.parse_args()
     if args.use_radial:
@@ -301,9 +297,9 @@ if __name__ == "__main__":
         avg_type = args.averaging_axis
     # Define data paths
     data_paths = [
-        os.path.join("data", "2024_11_11", "Metasurface", "Chip_02"),
-        os.path.join("data", "2024_11_12", "Metasurface", "Chip_01"),
-        os.path.join("data", "2024_11_29", "Metasurface", "Chip_02"),
+        os.path.join("2024_11_11", "Metasurface", "Chip_02"),
+        os.path.join("2024_11_12", "Metasurface", "Chip_01"),
+        os.path.join("2024_11_29", "Metasurface", "Chip_02"),
     ]
     data_paths = [
         os.path.join(args.base_path, p) for p in data_paths
