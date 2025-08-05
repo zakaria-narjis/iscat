@@ -261,6 +261,12 @@ if __name__ == "__main__":
         help="Data type",
     )
     parser.add_argument(
+        "--base_path",
+        type=str,
+        required=True,
+        help="The base directory to search for ND2 files.",
+    )
+    parser.add_argument(
         "--output_path",
         type=str,
         default="dataset",
@@ -299,7 +305,9 @@ if __name__ == "__main__":
         os.path.join("data", "2024_11_12", "Metasurface", "Chip_01"),
         os.path.join("data", "2024_11_29", "Metasurface", "Chip_02"),
     ]
-
+    data_paths = [
+        os.path.join(args.base_path, p) for p in data_paths
+    ]
     # Collect all file pairs
     all_file_pairs = []
     for data_path in data_paths:
