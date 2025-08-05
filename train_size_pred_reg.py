@@ -313,6 +313,7 @@ def plot_loss_and_distribution(
     loss_log,
     experiment_dir,
     class_to_idx,
+    config,
 ):
     """
     Plot training loss history and compare ground truth vs predicted size distribution.
@@ -358,13 +359,14 @@ def plot_loss_and_distribution(
 
     # Left subplot: Loss logs with log scale
     min_loss = min(loss_log)
-    axes[0].plot(loss_log, color="blue", label="MSE")
+    loss_type = config["training"]["loss"]["type"]
+    axes[0].plot(loss_log, color="blue", label=f"{loss_type} Loss")
     axes[0].set_xlabel("Epochs")
     axes[0].axhline(y=min_loss, color="blue", linestyle="dashed")
     axes[0].text(
         0, min_loss, f"{min_loss:.4f}", color="blue", verticalalignment="bottom"
     )
-    axes[0].set_ylabel("MSE (log-scale)")
+    axes[0].set_ylabel(f"{loss_type} (log-scale)")
     axes[0].set_yscale("log")  # Apply log scale to y-axis
     axes[0].legend()
     axes[0].grid(True, which="both", linestyle="--", linewidth=0.5)
@@ -374,7 +376,7 @@ def plot_loss_and_distribution(
         gt_size_labels.numpy(),
         bins=50,
         alpha=0.6,
-        label="Ground Truth",
+        label="Pseudo Size labels",
         color="blue",
         density=True,
     )
@@ -399,6 +401,13 @@ def plot_loss_and_distribution(
         dpi=300,
     )
     plt.close(fig)
+    np.savez(
+        os.path.join(experiment_dir, "results.npz"),
+        loss_log=loss_log,
+        predictions=predictions,
+        ground_truth_sizes=gt_size_labels.numpy(),
+        size_labels=size_labels
+    )
 
 def plot_validation_sample_images(
     model, data, labels, size_labels, mean, std,class_to_idx, device, experiment_dir, val_indices
@@ -486,10 +495,7 @@ def plot_validation_sample_images(
         ax.imshow(img, cmap="gray")
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.title.set_text(f"pred: {pred_size.item():.1f} | gt: {gt_size.item():.1f}")
-
-    # Add a main title to distinguish from training samples
-    fig.suptitle("Validation Sample Images with Size Predictions", fontsize=16, y=0.98)
+        ax.title.set_text(f"prediction: {pred_size.item():.1f} | pseudo label: {gt_size.item():.1f}")
 
     # Adjust layout and save
     plt.tight_layout()
@@ -585,7 +591,7 @@ def plot_sample_images(
         ax.imshow(img, cmap="gray")
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.title.set_text(f"pred: {pred_size.item():.1f} | gt: {gt_size.item():.1f}")
+        ax.title.set_text(f"prediction: {pred_size.item():.1f} | pseudo label: {gt_size.item():.1f}")
 
     # Adjust layout and save
     plt.tight_layout()
@@ -664,7 +670,7 @@ def plot_per_class_performance(
         rmse = np.sqrt(np.mean((class_gt - class_pred) ** 2))
         correlation = np.corrcoef(class_gt, class_pred)[0, 1]
         
-        axes[i].set_xlabel(f'Ground Truth Size [nm]')
+        axes[i].set_xlabel(f'Pseudo Size Label [nm]')
         axes[i].set_ylabel(f'Predicted Size [nm]')
         axes[i].set_title(f'Class {cls} (Validation)\nRMSE: {rmse:.2f}, r: {correlation:.3f}')
         axes[i].legend()
@@ -1115,10 +1121,7 @@ def plot_test_sample_images(model, data, labels, size_labels, mean, std, class_t
         ax.imshow(img.cpu().numpy(), cmap="gray") # Ensure it's numpy for imshow
         ax.set_xticks([])
         ax.set_yticks([])
-        ax.title.set_text(f"pred: {pred_size.item():.1f} | gt: {gt_size.item():.1f}")
-
-    # Add a main title to distinguish from training/validation samples
-    fig.suptitle("Test Sample Images with Size Predictions", fontsize=16, y=0.98)
+        ax.title.set_text(f"prediction: {pred_size.item():.1f} | pseudo label: {gt_size.item():.1f}")
 
     # Adjust layout and save
     plt.tight_layout()
@@ -1199,7 +1202,7 @@ def plot_test_per_class_performance(model, data, labels, size_labels, mean, std,
 
         if len(class_gt) == 0:
             axes[i].set_title(f'Class {original_class_id} (Test)\nNo samples')
-            axes[i].set_xlabel(f'Ground Truth Size [nm]')
+            axes[i].set_xlabel(f'Pseudo Size Label [nm]')
             axes[i].set_ylabel(f'Predicted Size [nm]')
             axes[i].grid(True, alpha=0.3)
             continue
@@ -1216,7 +1219,7 @@ def plot_test_per_class_performance(model, data, labels, size_labels, mean, std,
         rmse = np.sqrt(np.mean((class_gt - class_pred) ** 2)) if len(class_gt) > 0 else np.nan
         correlation = np.corrcoef(class_gt, class_pred)[0, 1] if len(class_gt) > 1 else np.nan
         
-        axes[i].set_xlabel(f'Ground Truth Size [nm]')
+        axes[i].set_xlabel(f'Pseudo Size Label [nm]')
         axes[i].set_ylabel(f'Predicted Size [nm]')
         axes[i].set_title(f'Class {original_class_id} (Test)\nRMSE: {rmse:.2f}, r: {correlation:.3f}')
         axes[i].legend()
@@ -1438,6 +1441,7 @@ def main(args):
         device=device,
         loss_log=loss_log,
         experiment_dir=experiment_dir,
+        config=config,
     )
 
     # Plot sample images with predicted sizes
