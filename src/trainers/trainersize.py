@@ -73,11 +73,11 @@ def generate_label_distribution(
     points_300 = torch.zeros(num_points//2)  # Initialize a tensor to store valid points
     dist_80 = _no_grad_trunc_normal_(
         points_80, mean=76, std=22.5, a = 10 ,
-        b= 170
+        b= float('inf')
     )
     dist_300 = _no_grad_trunc_normal_(
-        points_300, mean=302, std=25, a=170 ,
-        b=400 
+        points_300, mean=302, std=25, a=-float('inf') ,
+        b=float('inf')
     )
     output = torch.cat((dist_80, dist_300), dim=0)
     return output

@@ -30,7 +30,7 @@ class MMDLoss(nn.Module):
 
         if bandwidth_range is None:
             if kernel == "rbf":
-                self.bandwidth_range = [0.1, 0.5, 10, 50]
+                self.bandwidth_range = [5, 10, 15, 20, 50]
             elif kernel == "multiscale":
                 self.bandwidth_range = [0.2, 0.5, 0.9, 1.3]
             else:
@@ -48,16 +48,7 @@ class MMDLoss(nn.Module):
             
         Returns:
             torch.Tensor: MMD loss value
-        """
-        # Sort the samples to ensure order doesn't affect the loss
-        pairwise_dists = torch.cdist(x.unsqueeze(1), x.unsqueeze(1), p=2).pow(2).detach()
-        median_dist = pairwise_dists.median()
-
-        bandwidth_range = [0.2, 0.5, 1.0, 2.0]
-        self.bandwidth_range = [median_dist * b for b in bandwidth_range]
-        x = x.sort()[0]
-        y = y.sort()[0]
-        
+        """   
         # Ensure samples are 2D
         if x.dim() == 1:
             x = x.unsqueeze(1)

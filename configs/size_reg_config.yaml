@@ -9,14 +9,14 @@ data:
   z_depth: 1 # Depth for the x-y-z dataset
   num_workers: 12
 training:
-  batch_size: 32 #16000
+  batch_size: 32 #16000 32
   num_epochs: 600
   device: "cuda:0"
   training_noise_std: 2.0 #0.1
   optimizer:
     type: "Adam"
     parameters:
-      lr: 1e-4 #5e-2
+      lr: 1e-4 #5e-2 1e-4
       weight_decay: 5e-4 #5e-2
   scheduler:
     type: "ReduceLROnPlateau"
