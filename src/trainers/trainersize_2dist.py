@@ -82,64 +82,6 @@ def generate_label_distribution(
     output = torch.cat((dist_80, dist_300), dim=0)
     return output
 
-# def generate_label_distribution(
-#     num_points=10000, mean=76, std=22.5, min_value=10, max_value=None
-# ):
-#     """
-#     Generate a tensor of points sampled from a normal distribution with specified mean and standard deviation
-#     while rejecting points outside the optional min and max value constraints.
-
-#     Args:
-#         num_points (int): Number of points to generate
-#         mean (float): Mean of the distribution
-#         std (float): Standard deviation of the distribution
-#         min_value (float, optional): Minimum value of the distribution (inclusive)
-#         max_value (float, optional): Maximum value of the distribution (inclusive)
-
-#     Returns:
-#         torch.Tensor: Tensor of generated points within the specified range
-#     """
-#     points = torch.zeros(num_points)  # Initialize a tensor to store valid points
-#     dist = _no_grad_trunc_normal_(
-#         points, mean=mean, std=std, a=min_value if min_value is not None else -float('inf'),
-#         b=max_value if max_value is not None else float('inf')
-#     )
-#     return dist
-
-# def generate_label_distribution(
-#     num_points=10000, mean=76, std=22.5, min_value=10, max_value=None
-# ):
-#     """
-#     Generate a tensor of points sampled from a normal distribution with specified mean and standard deviation
-#     while rejecting points outside the optional min and max value constraints.
-
-#     Args:
-#         num_points (int): Number of points to generate
-#         mean (float): Mean of the distribution
-#         std (float): Standard deviation of the distribution
-#         min_value (float, optional): Minimum value of the distribution (inclusive)
-#         max_value (float, optional): Maximum value of the distribution (inclusive)
-
-#     Returns:
-#         torch.Tensor: Tensor of generated points within the specified range
-#     """
-#     points = torch.empty(0)  # Initialize an empty tensor to store valid points
-
-#     while points.numel() < num_points:
-#         # Generate points from normal distribution
-#         generated_points = torch.normal(mean=mean, std=std, size=(num_points,))
-
-#         # Filter points based on the min and max values
-#         if min_value is not None:
-#             generated_points = generated_points[generated_points >= min_value]
-#         if max_value is not None:
-#             generated_points = generated_points[generated_points <= max_value]
-
-#         # Add the valid points to the tensor
-#         points = torch.cat((points, generated_points))
-#     # Return only the first `num_points` points
-#     return points[:num_points]
-
 class TrainerSize(nn.Module):
     def __init__(
         self,
