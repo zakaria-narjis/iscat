@@ -1,13 +1,13 @@
 seed: 0
 data:
   image_size: 256
-  z_chunk_size : 32  # Number of chunks to divide the z-stack into for averaging
+  z_chunk_size : 12  # Number of chunks to divide the z-stack into for averaging for cellvit use 12 for eg
   fluo_masks_indices: [0,1] # classes used for training
   seg_method: "comdet"
   data_type: "Brightfield" # Brightfield/Laser
   normalize: "zscore" # Options: zscore, minmax, none
   multi_class: False
-  dataset_folder_path: "/data_ssd2/iscat_data"
+  dataset_folder_path: "/scratch/narjis/iscat_data/"
 
   train_dataset:
     num_workers: 3
@@ -22,10 +22,9 @@ data:
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 training:
-  batch_size: 32
+  batch_size: 32 # batch size should be lower for cellvit for eg 10
   num_epochs: 400
   train_split_size: 0.7
-  device: "cuda:4"
   loss:
     loss_type: "tversky" # Options: crossentropy, dice, dicece, tversky
     parameters:
@@ -55,9 +54,15 @@ training:
 testing:
 
 model:
-  type: "U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net
-  init_features: 64
-
+  type: "U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net #CellViT
+  unet:
+    init_features: 64
+  cellvit:
+    patch_size: 8
+    embed_dim: 384
+    depth: 12
+    num_heads: 6
+    extract_layers: [3, 6, 9, 12]
 logging:
   tensorboard:
     log_dir: "experiments/runs/segmentation/commercial_beads"
