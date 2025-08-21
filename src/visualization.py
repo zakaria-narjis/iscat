@@ -124,7 +124,7 @@ def plot_image_with_masks(
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.show()
+
 
 
 def batch_plot_images_with_masks(

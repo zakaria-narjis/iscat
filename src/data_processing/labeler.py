@@ -11,7 +11,7 @@ class Labeler:
 
     def __init__(self, method="comdet"):
         if method == "comdet":
-            fiji_path = "/nfshome/narjis/Fiji.app"  # for Linux
+            fiji_path = "/scratch/narjis/Fiji.app"  # for Linux
             # fiji_path = os.path.abspath('D:\Fiji.app') # for Windows
             # self.ij = imagej.init(ij_dir_or_version_or_endpoint='D:\Fiji.app',mode=imagej.Mode.HEADLESS) # for Windows
             # Check if Fiji path exists

@@ -246,15 +246,19 @@ def ddp_main(rank, world_size, args, config):
     config["model"]["out_channels"] = out_channels
 
     # Get data paths
-    if config["data"]["data_type"] == "Brightfield":
+    if config["data"]["data_type"].lower() == "brightfield":
         hdf5_path = os.path.join(
             config["data"]["dataset_folder_path"], "brightfield.hdf5"
         )
-    elif config["data"]["data_type"] == "Laser":
+    elif config["data"]["data_type"].lower() == "laser":
         hdf5_path = os.path.join(
-            config["data"]["dataset_folder_path"], "Laser.hdf5"
+            config["data"]["dataset_folder_path"], "laser.hdf5"
         )
-
+    else:
+        raise ValueError(
+            f"Invalid data type: {config['data']['data_type']}. "
+            "Expected 'Brightfield' or 'Laser'."
+        )
     with h5py.File(hdf5_path, "r") as f:
         num_samples = f["image_patches"].shape[0]
 
@@ -338,7 +342,7 @@ def ddp_main(rank, world_size, args, config):
     else:
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model = DDP(model, device_ids=[rank], find_unused_parameters=False)
-    print(f"[RANK {rank}] Model initialized: {config['model']['type']} with {num_classes} classes")
+    print(f"[RANK {rank}] Model initialized: {config['model']['type']} with {num_classes} classes data type {config['data']['data_type']}")
     # Calculate class weights if needed
     if config["training"]["class_weights"]["use"]:
         class_weights = Utils.calculate_class_weights_from_masks(

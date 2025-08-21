@@ -9,6 +9,16 @@ This script is used to generate the hdf5 file for the dataset. The dataset is st
   - Class 0: Cy5 (80nm)
   - Class 1: FITC (300nm)
   - Class 2: TRITC (1300nm)
+
+  example usage:
+  python scripts/generate_hdf5_sem_seg.py \
+  --datatype Laser \
+  --base_path /scratch/narjis/iscat_data/ \
+  --output_path /scratch/narjis/iscat_data/ \
+  --patch_size 256 256 \
+  --overlap 0 \
+  --verbose
+
 """
 
 import os
@@ -224,6 +234,12 @@ if __name__ == "__main__":
         help="Specify the data type (Brightfield or Laser).",
     )
     parser.add_argument(
+        "--base_path",
+        type=str,
+        required=True,
+        help="The base directory to search for ND2 files.",
+    )
+    parser.add_argument(
         "--output_path",
         type=str,
         default="dataset",
@@ -237,27 +253,68 @@ if __name__ == "__main__":
         help="Patch size (height, width). Default is 256x256.",
     )
     parser.add_argument(
+    "--chips",
+    type=str,
+    nargs="+",
+    default=["2024_11_11/Metasurface/Chip_02",
+             "2024_11_12/Metasurface/Chip_01",
+             "2024_11_29/Metasurface/Chip_02"],
+    help="Relative chip paths under base_path. Default includes 3 datasets."
+    )
+    parser.add_argument(
         "--overlap",
         type=int,
         default=0,
         help="Overlap between patches in pixels. Default is 0.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+    "--output_name",
+    type=str,
+    default=None,
+    help="Custom name for the HDF5 file (default: <datatype>.hdf5)."
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow overwriting an existing HDF5 file."
+    )
+    parser.add_argument(
+    "--verbose",
+    action="store_true",
+    help="Print detailed logs during processing."
+    )
 
-    data_path_1 = os.path.join("data", "2024_11_11", "Metasurface", "Chip_02")
-    data_path_2 = os.path.join("data", "2024_11_12", "Metasurface", "Chip_01")
-    data_path_3 = os.path.join("data", "2024_11_29", "Metasurface", "Chip_02")
+    args = parser.parse_args()
+    output_name = args.output_name or f"{args.datatype.lower()}.hdf5"
+    output_hdf5_path = os.path.join(args.output_path, output_name)
+    if os.path.exists(output_hdf5_path) and not args.overwrite:
+        raise FileExistsError(f"{output_hdf5_path} already exists. Use --overwrite to replace.")
+
+    data_paths = [os.path.join(args.base_path, p) for p in args.chips]
 
     nd2_paths = []
-    for data_path in [data_path_1, data_path_2]:
+    for data_path in data_paths:
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"Data path {data_path} does not exist.")
         nd2_paths.extend(get_nd2_paths(data_path, args.datatype))
 
-    output_hdf5_path = os.path.join(
-        args.output_path, f"{args.datatype.lower()}.hdf5"
-    )
+    if args.verbose:
+        print(f"Found {len(nd2_paths)} ND2 files in {args.datatype} data type.")
+        print(nd2_paths)
+
     nd2_to_hdf5(
         nd2_paths,
         output_hdf5_path,
         patch_size=args.patch_size,
         overlap=args.overlap,
     )
+    
+    if args.verbose:
+        print(f"Generated HDF5 file: {output_hdf5_path}")
+        print(f"Total ND2 files processed: {len(nd2_paths)}")
+        print(f"Patch size: {args.patch_size}, Overlap: {args.overlap}")
+        print(f"Output file name: {output_name}")
+        print(f"Output directory: {args.output_path}")
+        print(f"Data paths used: {data_paths}")
+        print(f"Chips processed: {args.chips}")
+        print(f"Data type: {args.datatype}")
