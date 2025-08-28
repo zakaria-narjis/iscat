@@ -281,6 +281,7 @@ def ddp_main(rank, world_size, args, config):
         normalize=config["data"]["train_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
         chunk_size=config["data"]["z_chunk_size"],
+        num_z_slices=config["data"]["num_z_slices"],
     )
 
     valid_dataset = iScatDataset(
@@ -291,6 +292,7 @@ def ddp_main(rank, world_size, args, config):
         normalize=config["data"]["valid_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
         chunk_size=config["data"]["z_chunk_size"],
+        num_z_slices=config["data"]["num_z_slices"],
     )
 
     test_dataset = iScatDataset(
@@ -301,6 +303,7 @@ def ddp_main(rank, world_size, args, config):
         normalize=config["data"]["train_dataset"]["normalize"],
         multi_class=config["data"]["multi_class"],
         chunk_size=config["data"]["z_chunk_size"],
+        num_z_slices=config["data"]["num_z_slices"],
     )
 
     # Create dataloaders with distributed samplers
@@ -393,7 +396,9 @@ def ddp_main(rank, world_size, args, config):
         )
         
         writer.close()
-
+    del train_dataset
+    del valid_dataset
+    del test_dataset
     # Synchronize all processes before cleanup
     dist.barrier()
     print(f"[RANK {rank}] Finished processing, cleaning up.")

@@ -1,0 +1,10 @@
+# Mark notebooks as linguist-generated
+notebooks/*.ipynb linguist-generated=true
+notebooks/**/*.ipynb linguist-generated=true
+notebooks/. linguist-generated=true
+*.ipynb linguist-documentation
+
+# Mark results folder as linguist-generated
+results/* linguist-generated=true
+results/**/*.ipynb linguist-generated=true
+results/. linguist-generated=true

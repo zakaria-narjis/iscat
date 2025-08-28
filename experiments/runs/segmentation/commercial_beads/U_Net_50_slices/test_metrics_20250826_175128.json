@@ -1,0 +1,21 @@
+{
+    "segmentation_scores": {
+        "mIoU": 0.6834319829940796,
+        "dice_mean": 0.7610735297203064,
+        "dice_per_class": [
+            0.7610735297203064
+        ]
+    },
+    "detection_scores": {
+        "total_precision": 0.8054888507718696,
+        "total_recall": 0.5796099728462109,
+        "total_f1": 0.6741314958369221,
+        "total_tp": 2348,
+        "total_fp": 567,
+        "total_fn": 1703,
+        "class_metrics": [
+            0,
+            1
+        ]
+    }
+}

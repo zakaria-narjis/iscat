@@ -1,28 +1,29 @@
 seed: 0
 data:
   image_size: 256
-  z_chunk_size : 12  # Number of chunks to divide the z-stack into for averaging for cellvit use 12 for eg
+  z_chunk_size : 201  # Number of chunks to divide the z-stack into for averaging for cellvit use 12 for eg
+  num_z_slices: 201 # Number of z slices to use, can be an integer or "all"
   fluo_masks_indices: [0,1] # classes used for training
   seg_method: "comdet"
-  data_type: "Laser" # Brightfield/Laser
+  data_type: "Brightfield" # Brightfield/Laser
   normalize: "zscore" # Options: zscore, minmax, none
   multi_class: False
   dataset_folder_path: "/scratch/narjis/iscat_data/"
 
   train_dataset:
-    num_workers: 4
+    num_workers: 2
     apply_augmentation: true
     normalize: ${data.normalize} # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
   valid_dataset:
-    num_workers: 4
+    num_workers: 2
     apply_augmentation: false
     normalize: ${data.normalize}  # Do not change
     classes: ${data.fluo_masks_indices} # Do not change
     multi_class: ${data.multi_class}  # Do not change
 training:
-  batch_size: 8 # batch size should be lower for cellvit for eg 10
+  batch_size: 32 # batch size should be lower for cellvit for eg 10
   num_epochs: 400
   train_split_size: 0.7
   loss:
@@ -54,7 +55,7 @@ training:
 testing:
 
 model:
-  type: "CellViT" #AttU_Net #R2AttU_Net #U_Net #R2U_Net #CellViT
+  type: "U_Net" #AttU_Net #R2AttU_Net #U_Net #R2U_Net #CellViT
   unet:
     init_features: 64
   cellvit:
